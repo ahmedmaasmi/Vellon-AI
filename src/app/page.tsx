@@ -1,65 +1,92 @@
-import Image from "next/image";
+import React from 'react';
+import Header from "@/components/Header";
+import Sidebar from "@/components/Sidebar";
+import CreateNote from "@/components/CreateNote";
+import NoteCard, { Note } from "@/components/NoteCard";
+
+const notes: Note[] = [
+  {
+    id: "1",
+    title: "Project Inspiration",
+    content: "Color palettes for the new dashboard design. Focusing on calming blues and energetic oranges.",
+    imageUrl: "https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8Y29sb3IlMjBwYWxldHRlfGVufDB8fDB8fHww",
+    type: "image",
+    color: "orange",
+  },
+  {
+    id: "2",
+    title: "Grocery List",
+    type: "list",
+    items: [
+      { text: "Almond Milk", checked: false },
+      { text: "Spinach", checked: false },
+      { text: "Avocados", checked: true },
+      { text: "Eggs (Free range)", checked: false },
+      { text: "Sourdough Bread", checked: true },
+    ],
+    color: "white",
+  },
+  {
+    id: "3",
+    title: "Tailwind CSS Resources",
+    content: "Don't forget to check out the new container queries plugin.",
+    linkTitle: "Tailwind CSS Resources",
+    linkUrl: "https://tailwindcss.com/docs/installation",
+    imageUrl: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Nnx8Y29kaW5nfGVufDB8fDB8fHww",
+    type: "link",
+    color: "white",
+  },
+  {
+    id: "4",
+    title: "Meeting Notes",
+    content: "Discuss Q3 roadmap. Key priorities include mobile app refactor and dark mode implementation. Deadline for initial mockups is Friday.",
+    type: "text",
+    color: "blue",
+    labels: ["Work", "Priority"],
+    isPinned: true,
+  },
+  {
+    id: "5",
+    title: "Dentist Appointment",
+    content: "Dr. Smiths Clinic. Bring insurance card.",
+    type: "text",
+    reminder: "Tomorrow, 10:00 AM",
+    color: "white",
+  },
+  {
+    id: "6",
+    title: "Book Recommendations",
+    type: "text",
+    content: "1. \"Atomic Habits\" by James Clear\n2. \"Deep Work\" by Cal Newport\n3. \"The Pragmatic Programmer\"\n4. \"Clean Code\"\n\nNeed to check the local library for availability on these.",
+    labels: ["Personal"],
+    color: "white",
+  },
+  {
+    id: "7",
+    title: "Remember to water the plants!",
+    type: "text",
+    color: "yellow",
+  }
+];
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <Header />
+      <div className="flex flex-1 pt-16">
+        <Sidebar />
+        <main className="flex-1 ml-0 md:ml-72 p-4 md:p-8 w-full max-w-[1600px] mx-auto">
+          <CreateNote />
+          
+          <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4 space-y-4">
+             {notes.map((note) => (
+               <div key={note.id} className="break-inside-avoid mb-4">
+                  <NoteCard note={note} />
+               </div>
+             ))}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
