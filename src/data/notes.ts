@@ -62,5 +62,13 @@ export const notes: Note[] = [
     title: "Remember to water the plants!",
     type: "text",
     color: "yellow",
-  }
+  },
+  {
+    id: "8",
+    title: "",
+    content: "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+    type: "quran",
+    color: "teal",
+    labels: ["Quran"],
+  },
 ];

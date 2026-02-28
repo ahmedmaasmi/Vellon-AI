@@ -1,7 +1,8 @@
 import React from 'react';
 import { Pin, Link as LinkIcon, Clock, CheckSquare, MoreVertical } from 'lucide-react';
+import QuranText from '@/components/QuranText';
 
-export type NoteType = 'text' | 'list' | 'image' | 'link';
+export type NoteType = 'text' | 'list' | 'image' | 'link' | 'quran';
 
 export interface NoteItem {
   text: string;
@@ -69,7 +70,12 @@ export default function NoteCard({ note }: { note: Note }) {
 
         {note.title && <h3 className="font-semibold text-lg text-gray-800 mb-2 leading-tight">{note.title}</h3>}
         
-        {note.type !== 'list' && note.content && (
+        {note.type === 'quran' && note.content && (
+          <QuranText as="p" className="text-gray-700 text-base leading-loose whitespace-pre-wrap block">
+            {note.content}
+          </QuranText>
+        )}
+        {note.type !== 'list' && note.type !== 'quran' && note.content && (
           <p className="text-gray-600 text-sm whitespace-pre-wrap leading-relaxed">{note.content}</p>
         )}
 
