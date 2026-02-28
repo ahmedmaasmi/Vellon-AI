@@ -4,6 +4,8 @@ import Sidebar from "@/components/Sidebar";
 import CreateNote from "@/components/CreateNote";
 import NoteCard from "@/components/NoteCard";
 import { notes } from "@/data/notes";
+import QuranText from "@/components/QuranText";
+
 
 export default function Home() {
   return (

@@ -2,10 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Quran Uthmanic Hafs font (quran.com style) */
+@font-face {
+  font-family: "UthmanicHafs";
+  src: url("https://verses.quran.foundation/fonts/quran/hafs/uthmanic_hafs/UthmanicHafs1Ver18.woff2")
+    format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 255, 255, 255;
   --background-end-rgb: 255, 255, 255;
+  --font-quran: "UthmanicHafs", "Traditional Arabic", "Scheherazade New",
+    "Amiri", "Noto Naskh Arabic", "serif";
+}
+
+/* Quran font stack and RTL rendering utilities */
+.font-quran {
+  font-family: var(--font-quran);
+}
+
+.quran-text {
+  font-family: var(--font-quran);
+  direction: rtl;
+  text-align: right;
+  line-height: 1.9;
+  unicode-bidi: plaintext;
 }
 
 body {
