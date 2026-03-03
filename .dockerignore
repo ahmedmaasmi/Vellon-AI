@@ -1,0 +1,32 @@
+# Dependencies and build output (frontend context)
+node_modules
+.next
+.git
+.gitignore
+
+# Backend (frontend build does not need backend)
+backend
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# Docs and misc
+*.md
+.cursor
+.idea
+.vscode
+.DS_Store
+
+# Docker (avoid recursion)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Tests and tooling (not needed for frontend image)
+*.test.*
+*.spec.*
+coverage
+.pytest_cache
+__pycache__

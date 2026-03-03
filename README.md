@@ -1,5 +1,21 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Docker (full stack)
+
+From the repo root you can run the backend (FastAPI, Postgres, Redis) and frontend (Next.js) together:
+
+```bash
+# Ensure backend/.env exists (copy from backend/.env.example). For Docker, use hostnames postgres and redis:
+#   DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/app
+#   REDIS_URL=redis://redis:6379/0
+docker compose up --build
+```
+
+- Frontend: http://localhost:3000  
+- API: http://localhost:8000  
+
+Production overrides (no host ports for DB/Redis): `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d`
+
 ## Getting Started
 
 First, run the development server:
