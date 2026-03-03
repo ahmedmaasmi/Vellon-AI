@@ -1,8 +1,10 @@
-# Production overrides: no host ports for DB/Redis, stricter limits
+# Production overrides: no dev volumes/reload, no host ports for DB/Redis, stricter limits
 # Run: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 services:
   api:
+    volumes: []
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports: []  # Remove host port; expose only on internal network (use reverse proxy)
     deploy:
       resources:
@@ -12,6 +14,12 @@ services:
           memory: 256M
 
   frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    volumes: []
     ports: []  # Expose only via reverse proxy in production
     deploy:
       resources:

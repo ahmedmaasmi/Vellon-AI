@@ -19,6 +19,7 @@
 **/.next/
 /frontend/.next/
 /frontend/.next/dev/
+/frontend/.next_old_broken/
 /frontend/out/
 
 # production

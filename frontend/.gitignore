@@ -18,6 +18,7 @@
 .next/
 **/.next/
 .next/dev/
+.next_old_broken/
 /out/
 
 

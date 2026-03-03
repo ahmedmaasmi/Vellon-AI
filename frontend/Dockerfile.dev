@@ -1,0 +1,18 @@
+# Frontend development image: install deps, run dev server (use with volume mount for hot reload)
+FROM node:20-alpine
+
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+COPY docker-entrypoint.dev.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
