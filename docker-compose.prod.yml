@@ -15,7 +15,7 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ./frontend 
       dockerfile: Dockerfile
     environment:
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
