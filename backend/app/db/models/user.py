@@ -29,6 +29,7 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         index=True,
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     __table_args__ = (

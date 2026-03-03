@@ -3,16 +3,28 @@ FastAPI application factory and composition root.
 Wires routers, middleware, and startup/shutdown resources.
 """
 
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api.router import api_router
 from app.core.config import settings
+from app.integrations.redis.client import close_redis_client, create_redis_client, ping_redis
 
-app = FastAPI(title="Backend API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage Redis client lifecycle: create at startup, close on shutdown."""
+    redis = create_redis_client()
+    app.state.redis = redis
+    yield
+    await close_redis_client(redis)
+
+
+app = FastAPI(title="Backend API", version="0.1.0", lifespan=lifespan)
 app.include_router(api_router, prefix="/api")
 
 
@@ -23,7 +35,7 @@ def health():
 
 
 @app.get("/ready")
-async def ready():
+async def ready(request: Request):
     """Readiness: DB and Redis are reachable. Returns 503 if either fails."""
     try:
         engine = create_async_engine(settings.database_url)
@@ -35,11 +47,8 @@ async def ready():
             status_code=503,
             content={"status": "unhealthy", "checks": {"database": "fail"}},
         )
-    try:
-        redis = Redis.from_url(settings.redis_url)
-        await redis.ping()
-        await redis.aclose()
-    except Exception:
+    redis = request.app.state.redis
+    if not await ping_redis(redis):
         return JSONResponse(
             status_code=503,
             content={"status": "unhealthy", "checks": {"redis": "fail"}},

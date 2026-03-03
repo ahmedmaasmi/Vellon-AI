@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     debug: bool = True
     secret_key: str = "change-me-in-production"
 
+    # JWT
+    jwt_algorithm: str = "HS256"
+    access_token_expires_minutes: int = 60
+
     database_url: str = "postgresql+asyncpg://user:password@localhost:5432/app"
     redis_url: str = "redis://localhost:6379/0"
 
