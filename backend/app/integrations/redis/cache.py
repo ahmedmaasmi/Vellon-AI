@@ -26,6 +26,11 @@ async def get_cache(redis: Redis, key: str) -> str | None:
     return value.decode("utf-8") if isinstance(value, bytes) else value
 
 
+async def delete_cache(redis: Redis, key: str) -> None:
+    """Delete key. Idempotent."""
+    await redis.delete(key)
+
+
 async def increment_counter(
     redis: Redis,
     key: str,

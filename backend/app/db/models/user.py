@@ -30,6 +30,12 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="member",
+        server_default="member",
+    )  # owner | admin | member
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     __table_args__ = (
@@ -44,5 +50,10 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     organization: Mapped["Organization"] = relationship(
         "Organization",
         back_populates="users",
+        lazy="raise",
+    )
+    notes: Mapped[list["Note"]] = relationship(
+        "Note",
+        back_populates="user",
         lazy="raise",
     )

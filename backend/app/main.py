@@ -6,6 +6,7 @@ Wires routers, middleware, and startup/shutdown resources.
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.api.router import api_router
 from app.core.config import settings
 from app.integrations.redis.client import close_redis_client, create_redis_client, ping_redis
+from app.middlewares.rate_limit import RateLimitMiddleware
 
 
 @asynccontextmanager
@@ -25,6 +27,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Backend API", version="0.1.0", lifespan=lifespan)
+
+# CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.add_middleware(RateLimitMiddleware, requests_per_minute=300)
 app.include_router(api_router, prefix="/api")
 
 

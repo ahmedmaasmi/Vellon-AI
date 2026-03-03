@@ -21,7 +21,7 @@ class UserRepository:
     async def get_by_id(self, user_id: uuid.UUID) -> User | None:
         """Return user by primary key, or None."""
         result = await self._session.execute(select(User).where(User.id == user_id))
-        return result.scalar_one_or_none()
+        return result.scalars().one_or_none()
 
     async def get_by_organization_and_email(
         self, organization_id: uuid.UUID, email: str
@@ -33,7 +33,7 @@ class UserRepository:
                 User.email == email,
             )
         )
-        return result.scalar_one_or_none()
+        return result.scalars().one_or_none()
 
     async def create(
         self,
@@ -42,6 +42,7 @@ class UserRepository:
         email: str,
         hashed_password: str,
         display_name: str | None = None,
+        role: str = "member",
     ) -> User:
         """Create and persist a user. Caller must commit session."""
         user = User(
@@ -49,6 +50,7 @@ class UserRepository:
             email=email,
             hashed_password=hashed_password,
             display_name=display_name,
+            role=role,
         )
         self._session.add(user)
         await self._session.flush()

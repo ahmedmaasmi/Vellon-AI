@@ -20,9 +20,29 @@ class Settings(BaseSettings):
     # JWT
     jwt_algorithm: str = "HS256"
     access_token_expires_minutes: int = 60
+    refresh_token_expires_days: int = 7
 
     database_url: str = "postgresql+asyncpg://user:password@localhost:5432/app"
     redis_url: str = "redis://localhost:6379/0"
+
+    # AI (OpenAI). Optional for dev; required for summarize/keywords.
+    openai_api_key: str | None = None
+
+    # Cache TTL for AI responses (seconds)
+    ai_cache_ttl_seconds: int = 3600
+
+    # Rate limits per plan (AI actions per month)
+    rate_limit_ai_free: int = 50
+    rate_limit_ai_pro: int = 500
+    rate_limit_ai_team: int = 2000
+
+    # Stripe (billing). Webhook secret for signature verification.
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+
+    # Telegram bot. Secret token for webhook verification (X-Telegram-Bot-Api-Secret-Token).
+    telegram_bot_token: str | None = None
+    telegram_webhook_secret_token: str | None = None
 
     # Optional multi-tenant
     tenant_header: str | None = "X-Tenant-ID"

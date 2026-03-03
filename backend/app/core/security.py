@@ -1,9 +1,9 @@
 """
-Security primitives: password hashing, JWT, token validation.
+Security primitives: password hashing, JWT access/refresh tokens, token validation.
 """
 
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import jwt
 from passlib.context import CryptContext
@@ -11,6 +11,9 @@ from passlib.context import CryptContext
 from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Refresh token payload type
+REFRESH_TOKEN_TYPE = "refresh"
 
 
 def hash_password(plain: str) -> str:
@@ -56,6 +59,45 @@ def decode_access_token(token: str) -> dict | None:
             settings.secret_key,
             algorithms=[settings.jwt_algorithm],
         )
+        return payload
+    except jwt.PyJWTError:
+        return None
+
+
+def create_refresh_token(
+    *,
+    sub: UUID | str,
+    org_id: UUID | str,
+    jti: str | None = None,
+) -> str:
+    """Create a signed JWT refresh token. jti (id) is used for revocation/rotation."""
+    now = datetime.now(UTC)
+    expire = now + timedelta(days=settings.refresh_token_expires_days)
+    payload = {
+        "sub": str(sub),
+        "org": str(org_id),
+        "jti": jti or str(uuid4()),
+        "type": REFRESH_TOKEN_TYPE,
+        "exp": expire,
+        "iat": now,
+    }
+    return jwt.encode(
+        payload,
+        settings.secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def decode_refresh_token(token: str) -> dict | None:
+    """Decode and validate refresh JWT. Returns payload or None. Caller must check type=='refresh'."""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.jwt_algorithm],
+        )
+        if payload.get("type") != REFRESH_TOKEN_TYPE:
+            return None
         return payload
     except jwt.PyJWTError:
         return None

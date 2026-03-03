@@ -17,6 +17,15 @@ class Organization(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     slug: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    plan: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="free",
+        server_default="free",
+    )  # free | pro | team
+    stripe_customer_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
+    )
 
     __table_args__ = (UniqueConstraint("slug", name="uq_organizations_slug"),)
 
@@ -24,4 +33,14 @@ class Organization(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         "User",
         back_populates="organization",
         lazy="raise",  # require explicit load in async context
+    )
+    notes: Mapped[list["Note"]] = relationship(
+        "Note",
+        back_populates="organization",
+        lazy="raise",
+    )
+    usage_logs: Mapped[list["UsageLog"]] = relationship(
+        "UsageLog",
+        back_populates="organization",
+        lazy="raise",
     )

@@ -77,24 +77,24 @@ services:
         reservations:
           memory: 32M
 
-  # worker:
-  #   build:
-  #     context: .
-  #     dockerfile: docker/worker/Dockerfile
-  #   env_file: .env
-  #   environment:
-  #     - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/app
-  #     - REDIS_URL=redis://redis:6379/0
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   restart: unless-stopped
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: 256M
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/app
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
 networks:
   default:

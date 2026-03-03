@@ -6,5 +6,5 @@ WORKDIR /app
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir .
 COPY . .
-# CMD depends on worker implementation (e.g. celery -A app.workers worker)
-CMD ["echo", "Configure worker entrypoint"]
+# ARQ worker: processes tasks from Redis queue
+CMD ["arq", "app.workers.settings.WorkerSettings"]
