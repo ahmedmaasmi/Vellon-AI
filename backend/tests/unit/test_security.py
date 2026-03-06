@@ -28,13 +28,10 @@ def test_verify_password_rejects_wrong_plain() -> None:
 
 def test_create_and_decode_access_token() -> None:
     user_id = uuid.uuid4()
-    org_id = uuid.uuid4()
-    token = create_access_token(sub=user_id, org_id=org_id, org_slug="my-org")
+    token = create_access_token(sub=user_id)
     payload = decode_access_token(token)
     assert payload is not None
     assert payload["sub"] == str(user_id)
-    assert payload["org"] == str(org_id)
-    assert payload["org_slug"] == "my-org"
     assert "exp" in payload
     assert "iat" in payload
 

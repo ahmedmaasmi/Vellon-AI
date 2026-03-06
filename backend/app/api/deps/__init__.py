@@ -1,6 +1,6 @@
 """
 Dependency providers for request-scoped objects.
-DB session, current tenant, current user, Redis handle, RBAC.
+DB session, current user, Redis handle, RBAC.
 """
 
 from __future__ import annotations
@@ -17,8 +17,7 @@ from app.core.rate_limit import RateLimitExceeded, check_and_increment_ai_usage
 from app.core.security import decode_access_token
 from app.db.models.note import Note
 from app.db.models.user import User
-from app.db.repositories import NoteRepository, OrganizationRepository
-from app.db.repositories import UserRepository
+from app.db.repositories import NoteRepository, UserRepository
 from app.db.session import get_db_session
 
 security = HTTPBearer(auto_error=True)
@@ -37,7 +36,7 @@ async def get_current_user(
     session: AsyncSession = Depends(get_db_session),
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> User:
-    """Decode JWT, load user by id; set request.state.organization_id; raise 401 if invalid or user not found."""
+    """Decode JWT, load user by id; raise 401 if invalid or user not found."""
     token = credentials.credentials
     payload = decode_access_token(token)
     if payload is None:
@@ -57,7 +56,6 @@ async def get_current_user(
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
 
-    request.state.organization_id = user.organization_id
     return user
 
 
@@ -77,13 +75,9 @@ async def get_note_or_404(
     session: AsyncSession = Depends(get_db_session),
     user: User = Depends(get_current_user),
 ) -> Note:
-    """Resolve note by id for the current user's organization; raise 404 if not found or wrong tenant."""
+    """Resolve note by id for the current user; raise 404 if not found."""
     repo = NoteRepository(session)
-    note = await repo.get_note_by_id(
-        organization_id=user.organization_id,
-        note_id=note_id,
-        user_id=user.id,
-    )
+    note = await repo.get_note_by_id(user_id=user.id, note_id=note_id)
     if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
     return note
@@ -92,18 +86,13 @@ async def get_note_or_404(
 async def require_ai_rate_limit(
     user: User = Depends(get_current_user),
     redis: Redis = Depends(get_redis),
-    session: AsyncSession = Depends(get_db_session),
 ) -> None:
     """
-    Increment org AI usage for the current month and raise 429 if over plan limit.
+    Increment user AI usage for the current month and raise 429 if over plan limit.
     Call this on AI endpoints (e.g. summarize, keywords) before performing the action.
     """
-    org_repo = OrganizationRepository(session)
-    org = await org_repo.get_by_id(user.organization_id)
-    if org is None:
-        raise HTTPException(status_code=403, detail="Organization not found")
     try:
-        await check_and_increment_ai_usage(redis, org.id, org.plan)
+        await check_and_increment_ai_usage(redis, user.id)
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,

@@ -1,5 +1,6 @@
 """
 Usage log model for tracking AI actions, speech, translation, Telegram (FR-2).
+Scoped by user (no organizations).
 """
 
 from __future__ import annotations
@@ -9,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
@@ -19,12 +20,6 @@ class UsageLog(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     __tablename__ = "usage_logs"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -38,13 +33,3 @@ class UsageLog(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     metadata_: Mapped[str | None] = mapped_column(
         "metadata", Text, nullable=True
     )  # optional JSON for details
-
-    organization: Mapped["Organization"] = relationship(
-        "Organization",
-        back_populates="usage_logs",
-        lazy="raise",
-    )
-
-
-if TYPE_CHECKING:
-    from app.db.models.organization import Organization

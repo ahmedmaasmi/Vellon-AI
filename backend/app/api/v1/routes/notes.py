@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_note_or_404, get_redis
 from app.db.models.note import Note
 from app.db.models.user import User
-from app.db.repositories import NoteRepository, OrganizationRepository, UsageLogRepository
+from app.db.repositories import NoteRepository, UsageLogRepository
 from app.db.session import get_db_session
 from app.schemas.note import (
     EmbeddingsResponse,
@@ -53,7 +53,6 @@ async def create_note(
 ) -> NoteResponse:
     repo = NoteRepository(session)
     note = await repo.create_note(
-        organization_id=user.organization_id,
         user_id=user.id,
         title=body.title,
         content=body.content,
@@ -72,7 +71,6 @@ async def list_notes(
 ) -> list[NoteResponse]:
     repo = NoteRepository(session)
     notes = await repo.list_notes(
-        organization_id=user.organization_id,
         user_id=user.id,
         limit=limit,
         offset=offset,
@@ -95,9 +93,8 @@ async def update_note(
     repo = NoteRepository(session)
     values = body.model_dump(exclude_unset=True)
     note = await repo.update_note(
-        organization_id=user.organization_id,
-        note_id=note_id,
         user_id=user.id,
+        note_id=note_id,
         **values,
     )
     if note is None:
@@ -113,9 +110,8 @@ async def delete_note(
 ) -> Response:
     repo = NoteRepository(session)
     note = await repo.soft_delete_note(
-        organization_id=user.organization_id,
-        note_id=note_id,
         user_id=user.id,
+        note_id=note_id,
     )
     if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
@@ -134,16 +130,11 @@ async def get_note_summary(
     if cached is not None:
         return SummaryResponse(summary=cached)
 
-    org_repo = OrganizationRepository(session)
-    org = await org_repo.get_by_id(user.organization_id)
-    if org is None:
-        raise HTTPException(status_code=403, detail="Organization not found")
     try:
-        await check_and_increment_ai_usage(redis, org.id, org.plan)
+        await check_and_increment_ai_usage(redis, user.id)
     except RateLimitExceeded as e:
         usage_repo = UsageLogRepository(session)
         await usage_repo.log(
-            organization_id=user.organization_id,
             user_id=user.id,
             action_type="ai_action_blocked",
             quantity=1,
@@ -164,7 +155,6 @@ async def get_note_summary(
     await set_cached_summary(redis, note.id, summary)
     usage_repo = UsageLogRepository(session)
     await usage_repo.log(
-        organization_id=user.organization_id,
         user_id=user.id,
         action_type="ai_action",
         quantity=1,
@@ -184,16 +174,11 @@ async def get_note_keywords(
     if cached is not None:
         return KeywordsResponse(keywords=cached)
 
-    org_repo = OrganizationRepository(session)
-    org = await org_repo.get_by_id(user.organization_id)
-    if org is None:
-        raise HTTPException(status_code=403, detail="Organization not found")
     try:
-        await check_and_increment_ai_usage(redis, org.id, org.plan)
+        await check_and_increment_ai_usage(redis, user.id)
     except RateLimitExceeded as e:
         usage_repo = UsageLogRepository(session)
         await usage_repo.log(
-            organization_id=user.organization_id,
             user_id=user.id,
             action_type="ai_action_blocked",
             quantity=1,
@@ -214,7 +199,6 @@ async def get_note_keywords(
     await set_cached_keywords(redis, note.id, keywords)
     usage_repo = UsageLogRepository(session)
     await usage_repo.log(
-        organization_id=user.organization_id,
         user_id=user.id,
         action_type="ai_action",
         quantity=1,
@@ -240,16 +224,11 @@ async def create_note_embeddings(
             cached=True,
         )
 
-    org_repo = OrganizationRepository(session)
-    org = await org_repo.get_by_id(user.organization_id)
-    if org is None:
-        raise HTTPException(status_code=403, detail="Organization not found")
     try:
-        await check_and_increment_ai_usage(redis, org.id, org.plan)
+        await check_and_increment_ai_usage(redis, user.id)
     except RateLimitExceeded as e:
         usage_repo = UsageLogRepository(session)
         await usage_repo.log(
-            organization_id=user.organization_id,
             user_id=user.id,
             action_type="ai_action_blocked",
             quantity=1,
@@ -269,7 +248,6 @@ async def create_note_embeddings(
     await set_cached_embedding(redis, note.id, embedding_vec)
     usage_repo = UsageLogRepository(session)
     await usage_repo.log(
-        organization_id=user.organization_id,
         user_id=user.id,
         action_type="ai_action",
         quantity=1,

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class QuotaResponse(BaseModel):
-    """Quota metadata for the current organization (AI actions per month)."""
+    """Quota metadata for the current user (AI actions per month)."""
 
     plan: str = Field(..., description="Current plan: free | pro | team")
     limit: int = Field(..., description="AI actions allowed per month")

@@ -1,5 +1,5 @@
 """
-Redis-based rate limiting per user/org/plan.
+Redis-based rate limiting per user (AI usage per month).
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from redis.asyncio import Redis
 
 from app.core.config import settings
-from app.integrations.redis.cache import increment_counter, get_cache
+from app.integrations.redis.cache import get_cache, increment_counter
 
 USAGE_AI_PREFIX = "usage:ai:"
 
@@ -37,15 +37,15 @@ def _limit_for_plan(plan: str) -> int:
 
 async def check_and_increment_ai_usage(
     redis: Redis,
-    organization_id: uuid.UUID,
-    plan: str,
+    user_id: uuid.UUID,
+    plan: str = "free",
 ) -> None:
     """
-    Increment AI usage counter for the org for the current month.
+    Increment AI usage counter for the user for the current month.
     Raises RateLimitExceeded if the new value exceeds the plan limit.
     """
     suffix, ttl, _ = _month_window()
-    key = f"{USAGE_AI_PREFIX}{organization_id}:{suffix}"
+    key = f"{USAGE_AI_PREFIX}{user_id}:{suffix}"
     new_value = await increment_counter(redis, key, amount=1, ttl_seconds=ttl)
     limit = _limit_for_plan(plan)
     if new_value > limit:
@@ -63,11 +63,11 @@ class RateLimitExceeded(Exception):
 
 async def get_ai_usage_current_month(
     redis: Redis,
-    organization_id: uuid.UUID,
+    user_id: uuid.UUID,
 ) -> int:
-    """Return current AI usage count for the org this month (from Redis)."""
+    """Return current AI usage count for the user this month (from Redis)."""
     suffix, _, _ = _month_window()
-    key = f"{USAGE_AI_PREFIX}{organization_id}:{suffix}"
+    key = f"{USAGE_AI_PREFIX}{user_id}:{suffix}"
     raw = await get_cache(redis, key)
     if raw is None:
         return 0
@@ -84,15 +84,15 @@ def get_limit_for_plan(plan: str) -> int:
 
 async def get_quota_metadata(
     redis: Redis,
-    organization_id: uuid.UUID,
-    plan: str,
+    user_id: uuid.UUID,
+    plan: str = "free",
 ) -> dict:
     """
-    Return quota metadata for the organization: plan, limit, used, remaining, reset_period_end (ISO).
+    Return quota metadata for the user: plan, limit, used, remaining, reset_period_end (ISO).
     Used for frontend display and plan-based enforcement consistency.
     """
     _, _, period_end = _month_window()
-    used = await get_ai_usage_current_month(redis, organization_id)
+    used = await get_ai_usage_current_month(redis, user_id)
     limit = _limit_for_plan(plan)
     remaining = max(0, limit - used)
     return {

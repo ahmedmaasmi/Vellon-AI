@@ -14,7 +14,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Spinner } from '@/components/ui/spinner';
 
 const loginSchema = z.object({
-  organization_slug: z.string().min(2, 'Organization slug is required'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
 });
@@ -36,12 +35,10 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      // 1. Login to get tokens
       const response = await api.post('/api/v1/auth/login', data);
       const { access_token, refresh_token } = response.data;
       setTokens(access_token, refresh_token || '');
 
-      // 2. Fetch current user
       const userResponse = await api.get('/api/v1/auth/me');
       setUser(userResponse.data);
 
@@ -58,15 +55,10 @@ export default function LoginPage() {
       <Card className="w-full max-w-md border-border bg-card">
         <CardHeader>
           <CardTitle className="text-foreground">Sign In</CardTitle>
-          <CardDescription>Enter your credentials to access your workspace.</CardDescription>
+          <CardDescription>Enter your credentials to access your notes.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Organization Slug</label>
-              <Input {...register('organization_slug')} placeholder="my-org" />
-              {errors.organization_slug && <p className="text-sm text-red-500">{errors.organization_slug.message}</p>}
-            </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Email</label>
               <Input {...register('email')} type="email" placeholder="you@example.com" />
@@ -86,7 +78,7 @@ export default function LoginPage() {
         </CardContent>
         <CardFooter className="justify-center">
           <p className="text-sm text-muted-foreground">
-            Don't have an account? <Link href="/register" className="text-primary hover:underline">Register</Link>
+            Don&apos;t have an account? <Link href="/register" className="text-primary hover:underline">Register</Link>
           </p>
         </CardFooter>
       </Card>

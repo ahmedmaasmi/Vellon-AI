@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 
 class NoteCreateInput(BaseModel):
-    """Input for creating a note. organization_id and user_id are set from current_user in the service."""
+    """Input for creating a note. user_id is set from current_user in the route."""
 
     content: str = Field(...)
     title: str | None = Field(None, max_length=255)
@@ -30,7 +30,6 @@ class NoteResponse(BaseModel):
     """Response DTO for a note (from service layer)."""
 
     id: UUID
-    organization_id: UUID
     user_id: UUID
     title: str | None
     content: str

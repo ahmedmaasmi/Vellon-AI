@@ -26,19 +26,12 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-def create_access_token(
-    *,
-    sub: UUID | str,
-    org_id: UUID | str,
-    org_slug: str,
-) -> str:
-    """Create a signed JWT access token. Claims: sub (user id), org (org id), org_slug, exp, iat."""
+def create_access_token(*, sub: UUID | str) -> str:
+    """Create a signed JWT access token. Claims: sub (user id), exp, iat."""
     now = datetime.now(UTC)
     expire = now + timedelta(minutes=settings.access_token_expires_minutes)
     payload = {
         "sub": str(sub),
-        "org": str(org_id),
-        "org_slug": org_slug,
         "exp": expire,
         "iat": now,
     }
@@ -67,7 +60,6 @@ def decode_access_token(token: str) -> dict | None:
 def create_refresh_token(
     *,
     sub: UUID | str,
-    org_id: UUID | str,
     jti: str | None = None,
 ) -> str:
     """Create a signed JWT refresh token. jti (id) is used for revocation/rotation."""
@@ -75,7 +67,6 @@ def create_refresh_token(
     expire = now + timedelta(days=settings.refresh_token_expires_days)
     payload = {
         "sub": str(sub),
-        "org": str(org_id),
         "jti": jti or str(uuid4()),
         "type": REFRESH_TOKEN_TYPE,
         "exp": expire,

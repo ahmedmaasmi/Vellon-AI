@@ -1,5 +1,5 @@
 """
-Note service: create note with tenant enforcement and business validation.
+Note service: create note with user ownership and business validation.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ class InvalidNoteContentError(Exception):
 
 
 class NoteService:
-    """Create-note use case: enforces organization_id from current_user, validates content."""
+    """Create-note use case: enforces user_id from current_user, validates content."""
 
     def __init__(self, note_repo: NoteRepository) -> None:
         self._note_repo = note_repo
@@ -26,13 +26,12 @@ class NoteService:
         current_user: User,
         body: NoteCreateInput,
     ) -> NoteResponse:
-        """Create a note for the current user's organization. organization_id and user_id come from current_user."""
+        """Create a note for the current user."""
         content = body.content.strip()
         if not content:
             raise InvalidNoteContentError()
 
         note = await self._note_repo.create_note(
-            organization_id=current_user.organization_id,
             user_id=current_user.id,
             content=content,
             title=body.title,

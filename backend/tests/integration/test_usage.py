@@ -9,12 +9,9 @@ from httpx import AsyncClient
 async def _register_and_get_token(
     client: AsyncClient,
     *,
-    organization_slug: str,
     email: str,
 ) -> str:
     payload = {
-        "organization_name": f"Org {organization_slug}",
-        "organization_slug": organization_slug,
         "email": email,
         "password": "pass12345",
     }
@@ -33,9 +30,7 @@ async def test_quota_requires_auth(client: AsyncClient) -> None:
 @pytest.mark.integration
 async def test_quota_returns_metadata(client: AsyncClient) -> None:
     """GET /usage/quota with valid token returns plan, limit, used, remaining, reset_period_end."""
-    token = await _register_and_get_token(
-        client, organization_slug="quota-org", email="quota@example.com"
-    )
+    token = await _register_and_get_token(client, email="quota@example.com")
     r = await client.get(
         "/api/v1/usage/quota",
         headers={"Authorization": f"Bearer {token}"},

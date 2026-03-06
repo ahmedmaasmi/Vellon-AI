@@ -1,4 +1,4 @@
-"""Unit tests for NoteService: create_note with tenant enforcement and content validation."""
+"""Unit tests for NoteService: create_note with user ownership and content validation."""
 
 import uuid
 from datetime import datetime, timezone
@@ -10,27 +10,23 @@ from app.schemas.note import NoteCreateInput, NoteResponse
 from app.services.note import InvalidNoteContentError, NoteService
 
 
-def _make_user(*, organization_id: uuid.UUID | None = None, user_id: uuid.UUID | None = None):
-    """Return a minimal current_user-like object with id and organization_id."""
-    org_id = organization_id or uuid.uuid4()
+def _make_user(*, user_id: uuid.UUID | None = None):
+    """Return a minimal current_user-like object with id."""
     uid = user_id or uuid.uuid4()
     user = MagicMock()
     user.id = uid
-    user.organization_id = org_id
     return user
 
 
 @pytest.mark.asyncio
-async def test_create_note_success_returns_note_response_and_uses_current_user_tenant() -> None:
-    """create_note uses current_user.organization_id and current_user.id, returns NoteResponse."""
-    org_id = uuid.uuid4()
+async def test_create_note_success_returns_note_response_and_uses_current_user() -> None:
+    """create_note uses current_user.id, returns NoteResponse."""
     user_id = uuid.uuid4()
-    current_user = _make_user(organization_id=org_id, user_id=user_id)
+    current_user = _make_user(user_id=user_id)
 
     now = datetime.now(timezone.utc)
     created_note = MagicMock()
     created_note.id = uuid.uuid4()
-    created_note.organization_id = org_id
     created_note.user_id = user_id
     created_note.title = "My title"
     created_note.content = "Hello world"
@@ -49,12 +45,10 @@ async def test_create_note_success_returns_note_response_and_uses_current_user_t
 
     assert isinstance(result, NoteResponse)
     assert result.id == created_note.id
-    assert result.organization_id == org_id
     assert result.user_id == user_id
     assert result.content == "Hello world"
     assert result.title == "My title"
     note_repo.create_note.assert_awaited_once_with(
-        organization_id=org_id,
         user_id=user_id,
         content="Hello world",
         title="My title",

@@ -11,12 +11,9 @@ from httpx import AsyncClient
 async def _register_and_get_token(
     client: AsyncClient,
     *,
-    organization_slug: str,
     email: str,
 ) -> str:
     payload = {
-        "organization_name": f"Org {organization_slug}",
-        "organization_slug": organization_slug,
         "email": email,
         "password": "pass12345",
     }
@@ -35,9 +32,7 @@ async def test_notes_requires_auth(client: AsyncClient) -> None:
 @pytest.mark.integration
 async def test_notes_crud_happy_path(client: AsyncClient) -> None:
     """Create, list, get, update, delete note for current user."""
-    token = await _register_and_get_token(
-        client, organization_slug="notes-crud", email="notes-crud@example.com"
-    )
+    token = await _register_and_get_token(client, email="notes-crud@example.com")
     headers = {"Authorization": f"Bearer {token}"}
 
     create_r = await client.post(
@@ -85,9 +80,7 @@ async def test_notes_crud_happy_path(client: AsyncClient) -> None:
 @pytest.mark.integration
 async def test_notes_get_update_delete_not_found(client: AsyncClient) -> None:
     """Unknown note ids return 404."""
-    token = await _register_and_get_token(
-        client, organization_slug="notes-404", email="notes-404@example.com"
-    )
+    token = await _register_and_get_token(client, email="notes-404@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     missing_id = str(uuid.uuid4())
 
@@ -106,14 +99,10 @@ async def test_notes_get_update_delete_not_found(client: AsyncClient) -> None:
 
 
 @pytest.mark.integration
-async def test_notes_owner_scope_denies_other_tenant_note(client: AsyncClient) -> None:
-    """A note id from another organization is not readable and returns 404."""
-    token_a = await _register_and_get_token(
-        client, organization_slug="notes-tenant-a", email="notes-a@example.com"
-    )
-    token_b = await _register_and_get_token(
-        client, organization_slug="notes-tenant-b", email="notes-b@example.com"
-    )
+async def test_notes_user_scope_denies_other_user_note(client: AsyncClient) -> None:
+    """A note id from another user is not readable and returns 404."""
+    token_a = await _register_and_get_token(client, email="notes-a@example.com")
+    token_b = await _register_and_get_token(client, email="notes-b@example.com")
 
     headers_a = {"Authorization": f"Bearer {token_a}"}
     headers_b = {"Authorization": f"Bearer {token_b}"}
@@ -121,7 +110,7 @@ async def test_notes_owner_scope_denies_other_tenant_note(client: AsyncClient) -
     create_r = await client.post(
         "/api/v1/notes",
         headers=headers_a,
-        json={"content": "Tenant A secret"},
+        json={"content": "User A note"},
     )
     assert create_r.status_code == 201
     note_id = create_r.json()["id"]
@@ -132,7 +121,7 @@ async def test_notes_owner_scope_denies_other_tenant_note(client: AsyncClient) -
     put_other_r = await client.put(
         f"/api/v1/notes/{note_id}",
         headers=headers_b,
-        json={"title": "Hacked", "content": "Other tenant"},
+        json={"title": "Hacked", "content": "Other user"},
     )
     assert put_other_r.status_code == 404
 
@@ -148,18 +137,14 @@ async def test_embeddings_requires_auth(client: AsyncClient) -> None:
 
 
 @pytest.mark.integration
-async def test_embeddings_cross_tenant_returns_404(client: AsyncClient) -> None:
-    """POST to another org's note id returns 404."""
-    token_a = await _register_and_get_token(
-        client, organization_slug="emb-a", email="emb-a@example.com"
-    )
-    token_b = await _register_and_get_token(
-        client, organization_slug="emb-b", email="emb-b@example.com"
-    )
+async def test_embeddings_other_user_note_returns_404(client: AsyncClient) -> None:
+    """POST to another user's note id returns 404."""
+    token_a = await _register_and_get_token(client, email="emb-a@example.com")
+    token_b = await _register_and_get_token(client, email="emb-b@example.com")
     create_r = await client.post(
         "/api/v1/notes",
         headers={"Authorization": f"Bearer {token_a}"},
-        json={"content": "Note in org A"},
+        json={"content": "Note by user A"},
     )
     assert create_r.status_code == 201
     note_id = create_r.json()["id"]

@@ -1,5 +1,5 @@
 """
-Note ORM model. Notes belong to an organization and a user (multi-tenant).
+Note ORM model. Notes belong to a user (single-user, no organizations).
 """
 
 from __future__ import annotations
@@ -14,21 +14,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
-    from app.db.models.organization import Organization
     from app.db.models.user import User
 
 
 class Note(Base, UUIDPrimaryKeyMixin, TimestampMixin):
-    """Note entity. Scoped to an organization and owned by a user."""
+    """Note entity. Owned by a user."""
 
     __tablename__ = "notes"
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
     user_id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -58,11 +51,6 @@ class Note(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     __table_args__ = (Index("ix_notes_created_at", "created_at"),)
 
-    organization: Mapped["Organization"] = relationship(
-        "Organization",
-        back_populates="notes",
-        lazy="raise",
-    )
     user: Mapped["User"] = relationship(
         "User",
         back_populates="notes",

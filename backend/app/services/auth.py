@@ -1,5 +1,5 @@
 """
-Auth service: register (org + owner), login (tenant-scoped), refresh token rotation, token issuance.
+Auth service: register (user only), login, refresh token rotation, token issuance.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.db.repositories import OrganizationRepository, UserRepository
+from app.db.repositories import UserRepository
 from app.integrations.redis.cache import delete_cache, set_cache
 from app.schemas.auth import TokenResponse
 
@@ -31,13 +31,13 @@ class AuthError(Exception):
 
 
 class InvalidCredentialsError(AuthError):
-    """Wrong password or user not found in tenant."""
+    """Wrong password or user not found."""
 
     pass
 
 
-class DuplicateOrganizationSlugError(AuthError):
-    """Organization slug already taken."""
+class DuplicateEmailError(AuthError):
+    """Email already registered."""
 
     pass
 
@@ -45,12 +45,7 @@ class DuplicateOrganizationSlugError(AuthError):
 class AuthService:
     """Orchestrates register, login, and refresh token rotation."""
 
-    def __init__(
-        self,
-        organization_repo: OrganizationRepository,
-        user_repo: UserRepository,
-    ) -> None:
-        self._org_repo = organization_repo
+    def __init__(self, user_repo: UserRepository) -> None:
         self._user_repo = user_repo
 
     def _refresh_ttl_seconds(self) -> int:
@@ -77,44 +72,32 @@ class AuthService:
     async def register(
         self,
         *,
-        organization_name: str,
-        organization_slug: str,
         email: str,
         password: str,
         display_name: str | None = None,
         redis: Redis | None = None,
     ) -> TokenResponse:
-        """Create organization and owner user, return access and refresh tokens."""
-        slug = organization_slug.strip().lower()
-        existing = await self._org_repo.get_by_slug(slug)
+        """Create user account, return access and refresh tokens."""
+        email_lower = email.strip().lower()
+        existing = await self._user_repo.get_by_email(email_lower)
         if existing is not None:
-            raise DuplicateOrganizationSlugError()
+            raise DuplicateEmailError()
 
-        org = await self._org_repo.create(name=organization_name, slug=slug)
         hashed = hash_password(password)
         user = await self._user_repo.create(
-            organization_id=org.id,
-            email=email.strip().lower(),
+            email=email_lower,
             hashed_password=hashed,
             display_name=display_name,
             role="owner",
         )
-        access_token = create_access_token(
-            sub=user.id,
-            org_id=org.id,
-            org_slug=org.slug or slug,
-        )
+        access_token = create_access_token(sub=user.id)
         access_expires = settings.access_token_expires_minutes * 60
         refresh_expires = self._refresh_ttl_seconds()
         refresh_token = None
         refresh_expires_in = None
         if redis is not None:
             jti = str(uuid4())
-            refresh_token = create_refresh_token(
-                sub=user.id,
-                org_id=org.id,
-                jti=jti,
-            )
+            refresh_token = create_refresh_token(sub=user.id, jti=jti)
             await self._store_refresh_jti(redis, jti)
             refresh_expires_in = refresh_expires
         return TokenResponse(
@@ -128,38 +111,22 @@ class AuthService:
     async def login(
         self,
         *,
-        organization_slug: str,
         email: str,
         password: str,
         redis: Redis | None = None,
     ) -> TokenResponse:
-        """Authenticate user in tenant, return access and refresh tokens."""
-        slug = organization_slug.strip().lower()
-        org = await self._org_repo.get_by_slug(slug)
-        if org is None:
-            raise InvalidCredentialsError()
-
-        user = await self._user_repo.get_by_organization_and_email(
-            org.id, email.strip().lower()
-        )
+        """Authenticate user by email + password, return access and refresh tokens."""
+        user = await self._user_repo.get_by_email(email.strip().lower())
         if user is None or not verify_password(password, user.hashed_password):
             raise InvalidCredentialsError()
 
-        access_token = create_access_token(
-            sub=user.id,
-            org_id=org.id,
-            org_slug=org.slug or slug,
-        )
+        access_token = create_access_token(sub=user.id)
         access_expires = settings.access_token_expires_minutes * 60
         refresh_token = None
         refresh_expires_in = None
         if redis is not None:
             jti = str(uuid4())
-            refresh_token = create_refresh_token(
-                sub=user.id,
-                org_id=org.id,
-                jti=jti,
-            )
+            refresh_token = create_refresh_token(sub=user.id, jti=jti)
             await self._store_refresh_jti(redis, jti)
             refresh_expires_in = self._refresh_ttl_seconds()
         return TokenResponse(
@@ -181,24 +148,16 @@ class AuthService:
             raise InvalidCredentialsError()
         jti = payload.get("jti")
         sub = payload.get("sub")
-        org_id = payload.get("org")
-        if not jti or not sub or not org_id:
+        if not jti or not sub:
             raise InvalidCredentialsError()
         if not await self._consume_refresh_jti(redis, jti):
             raise InvalidCredentialsError()
         user = await self._user_repo.get_by_id(uuid.UUID(sub))
-        if user is None or str(user.organization_id) != org_id:
+        if user is None:
             raise InvalidCredentialsError()
-        org = await self._org_repo.get_by_id(user.organization_id)
-        if org is None:
-            raise InvalidCredentialsError()
-        access_token = create_access_token(
-            sub=user.id,
-            org_id=org.id,
-            org_slug=org.slug or "",
-        )
+        access_token = create_access_token(sub=user.id)
         jti_new = str(uuid4())
-        new_refresh = create_refresh_token(sub=user.id, org_id=org.id, jti=jti_new)
+        new_refresh = create_refresh_token(sub=user.id, jti=jti_new)
         await self._store_refresh_jti(redis, jti_new)
         return TokenResponse(
             access_token=access_token,

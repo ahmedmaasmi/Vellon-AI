@@ -23,22 +23,14 @@ class UserRepository:
         result = await self._session.execute(select(User).where(User.id == user_id))
         return result.scalars().one_or_none()
 
-    async def get_by_organization_and_email(
-        self, organization_id: uuid.UUID, email: str
-    ) -> User | None:
-        """Return user scoped by organization and email, or None."""
-        result = await self._session.execute(
-            select(User).where(
-                User.organization_id == organization_id,
-                User.email == email,
-            )
-        )
+    async def get_by_email(self, email: str) -> User | None:
+        """Return user by email, or None."""
+        result = await self._session.execute(select(User).where(User.email == email))
         return result.scalars().one_or_none()
 
     async def create(
         self,
         *,
-        organization_id: uuid.UUID,
         email: str,
         hashed_password: str,
         display_name: str | None = None,
@@ -46,7 +38,6 @@ class UserRepository:
     ) -> User:
         """Create and persist a user. Caller must commit session."""
         user = User(
-            organization_id=organization_id,
             email=email,
             hashed_password=hashed_password,
             display_name=display_name,
