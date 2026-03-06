@@ -3,6 +3,15 @@ import { useAuthStore } from '@/store/auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+/** AI quota metadata from GET /api/v1/usage/quota */
+export interface QuotaResponse {
+  plan: string;
+  limit: number;
+  used: number;
+  remaining: number;
+  reset_period_end: string;
+}
+
 export const api = axios.create({
   baseURL: API_URL,
   headers: {

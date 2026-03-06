@@ -61,7 +61,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">My Notes</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">My Notes</h1>
         <Button onClick={createNewNote}>
           <Plus className="h-4 w-4 mr-2" />
           New Note
@@ -69,26 +69,26 @@ export default function DashboardPage() {
       </div>
 
       {notes.length === 0 ? (
-        <div className="text-center py-12 border-2 border-dashed rounded-lg bg-white">
+        <div className="text-center py-16 border-2 border-dashed border-border rounded-xl bg-card">
           <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium">No notes yet</h3>
-          <p className="text-muted-foreground mb-4">Create your first note to get started.</p>
+          <h3 className="text-lg font-medium text-foreground">No notes yet</h3>
+          <p className="text-muted-foreground mb-6">Create your first note to get started.</p>
           <Button onClick={createNewNote}>Create Note</Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {notes.map((note) => (
             <Link key={note.id} href={`/dashboard/notes/${note.id}`}>
-              <Card className="h-full hover:shadow-md transition-shadow cursor-pointer flex flex-col">
+              <Card className="h-full border-border bg-card hover:border-primary/50 transition-colors cursor-pointer flex flex-col">
                 <CardHeader>
-                  <CardTitle className="line-clamp-1">{note.title || 'Untitled Note'}</CardTitle>
+                  <CardTitle className="line-clamp-1 text-foreground">{note.title || 'Untitled Note'}</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-1">
                   <p className="text-sm text-muted-foreground line-clamp-3">
                     {note.content || 'No content'}
                   </p>
                 </CardContent>
-                <CardFooter className="text-xs text-muted-foreground border-t pt-4 mt-auto">
+                <CardFooter className="text-xs text-muted-foreground border-t border-border pt-4 mt-auto">
                   <Calendar className="h-3 w-3 mr-1" />
                   {new Date(note.created_at).toLocaleDateString()}
                 </CardFooter>

@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.rate_limit import RateLimitExceeded, check_and_increment_ai_usage
 from app.core.security import decode_access_token
+from app.db.models.note import Note
 from app.db.models.user import User
-from app.db.repositories import OrganizationRepository
+from app.db.repositories import NoteRepository, OrganizationRepository
 from app.db.repositories import UserRepository
 from app.db.session import get_db_session
 
@@ -69,6 +70,23 @@ def require_roles(roles: Sequence[str]):
         return user
 
     return _require
+
+
+async def get_note_or_404(
+    note_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+) -> Note:
+    """Resolve note by id for the current user's organization; raise 404 if not found or wrong tenant."""
+    repo = NoteRepository(session)
+    note = await repo.get_note_by_id(
+        organization_id=user.organization_id,
+        note_id=note_id,
+        user_id=user.id,
+    )
+    if note is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return note
 
 
 async def require_ai_rate_limit(

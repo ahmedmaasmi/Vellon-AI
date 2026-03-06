@@ -128,3 +128,43 @@ async def test_notes_owner_scope_denies_other_tenant_note(client: AsyncClient) -
 
     get_other_r = await client.get(f"/api/v1/notes/{note_id}", headers=headers_b)
     assert get_other_r.status_code == 404
+
+    put_other_r = await client.put(
+        f"/api/v1/notes/{note_id}",
+        headers=headers_b,
+        json={"title": "Hacked", "content": "Other tenant"},
+    )
+    assert put_other_r.status_code == 404
+
+    delete_other_r = await client.delete(f"/api/v1/notes/{note_id}", headers=headers_b)
+    assert delete_other_r.status_code == 404
+
+
+@pytest.mark.integration
+async def test_embeddings_requires_auth(client: AsyncClient) -> None:
+    """POST /notes/{id}/embeddings without token returns 403."""
+    r = await client.post(f"/api/v1/notes/{uuid.uuid4()}/embeddings")
+    assert r.status_code == 403
+
+
+@pytest.mark.integration
+async def test_embeddings_cross_tenant_returns_404(client: AsyncClient) -> None:
+    """POST to another org's note id returns 404."""
+    token_a = await _register_and_get_token(
+        client, organization_slug="emb-a", email="emb-a@example.com"
+    )
+    token_b = await _register_and_get_token(
+        client, organization_slug="emb-b", email="emb-b@example.com"
+    )
+    create_r = await client.post(
+        "/api/v1/notes",
+        headers={"Authorization": f"Bearer {token_a}"},
+        json={"content": "Note in org A"},
+    )
+    assert create_r.status_code == 201
+    note_id = create_r.json()["id"]
+    r = await client.post(
+        f"/api/v1/notes/{note_id}/embeddings",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert r.status_code == 404

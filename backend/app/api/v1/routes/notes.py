@@ -11,11 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_redis
+from app.api.deps import get_current_user, get_note_or_404, get_redis
+from app.db.models.note import Note
 from app.db.models.user import User
 from app.db.repositories import NoteRepository, OrganizationRepository, UsageLogRepository
 from app.db.session import get_db_session
 from app.schemas.note import (
+    EmbeddingsResponse,
     KeywordsResponse,
     NoteCreateInput,
     NoteResponse,
@@ -32,6 +34,12 @@ from app.services.ai import (
     set_cached_keywords,
     set_cached_summary,
     summarize_text,
+)
+from app.services.embeddings import (
+    OpenRouterNotConfiguredError,
+    generate_embedding,
+    get_cached_embedding,
+    set_cached_embedding,
 )
 
 router = APIRouter(prefix="/notes", tags=["notes"])
@@ -73,19 +81,7 @@ async def list_notes(
 
 
 @router.get("/{note_id}", response_model=NoteResponse)
-async def get_note(
-    note_id: uuid.UUID,
-    session: AsyncSession = Depends(get_db_session),
-    user: User = Depends(get_current_user),
-) -> NoteResponse:
-    repo = NoteRepository(session)
-    note = await repo.get_note_by_id(
-        organization_id=user.organization_id,
-        note_id=note_id,
-        user_id=user.id,
-    )
-    if note is None:
-        raise HTTPException(status_code=404, detail="Note not found")
+async def get_note(note: Note = Depends(get_note_or_404)) -> NoteResponse:
     return NoteResponse.model_validate(note)
 
 
@@ -128,22 +124,13 @@ async def delete_note(
 
 @router.get("/{note_id}/summary", response_model=SummaryResponse)
 async def get_note_summary(
-    note_id: uuid.UUID,
+    note: Note = Depends(get_note_or_404),
     session: AsyncSession = Depends(get_db_session),
     user: User = Depends(get_current_user),
     redis: Redis = Depends(get_redis),
 ) -> SummaryResponse:
     """Return AI summary for the note. Uses Redis cache when available. Rate-limited by plan when calling AI."""
-    repo = NoteRepository(session)
-    note = await repo.get_note_by_id(
-        organization_id=user.organization_id,
-        note_id=note_id,
-        user_id=user.id,
-    )
-    if note is None:
-        raise HTTPException(status_code=404, detail="Note not found")
-
-    cached = await get_cached_summary(redis, note_id)
+    cached = await get_cached_summary(redis, note.id)
     if cached is not None:
         return SummaryResponse(summary=cached)
 
@@ -154,6 +141,13 @@ async def get_note_summary(
     try:
         await check_and_increment_ai_usage(redis, org.id, org.plan)
     except RateLimitExceeded as e:
+        usage_repo = UsageLogRepository(session)
+        await usage_repo.log(
+            organization_id=user.organization_id,
+            user_id=user.id,
+            action_type="ai_action_blocked",
+            quantity=1,
+        )
         raise HTTPException(
             status_code=429,
             detail=f"AI usage limit exceeded: {e.current} > {e.limit} for this month",
@@ -167,7 +161,7 @@ async def get_note_summary(
             status_code=503,
             detail="AI summary not available (OpenAI not configured)",
         )
-    await set_cached_summary(redis, note_id, summary)
+    await set_cached_summary(redis, note.id, summary)
     usage_repo = UsageLogRepository(session)
     await usage_repo.log(
         organization_id=user.organization_id,
@@ -180,22 +174,13 @@ async def get_note_summary(
 
 @router.get("/{note_id}/keywords", response_model=KeywordsResponse)
 async def get_note_keywords(
-    note_id: uuid.UUID,
+    note: Note = Depends(get_note_or_404),
     session: AsyncSession = Depends(get_db_session),
     user: User = Depends(get_current_user),
     redis: Redis = Depends(get_redis),
 ) -> KeywordsResponse:
     """Return AI-extracted keywords for the note. Uses Redis cache when available. Rate-limited by plan when calling AI."""
-    repo = NoteRepository(session)
-    note = await repo.get_note_by_id(
-        organization_id=user.organization_id,
-        note_id=note_id,
-        user_id=user.id,
-    )
-    if note is None:
-        raise HTTPException(status_code=404, detail="Note not found")
-
-    cached = await get_cached_keywords(redis, note_id)
+    cached = await get_cached_keywords(redis, note.id)
     if cached is not None:
         return KeywordsResponse(keywords=cached)
 
@@ -206,6 +191,13 @@ async def get_note_keywords(
     try:
         await check_and_increment_ai_usage(redis, org.id, org.plan)
     except RateLimitExceeded as e:
+        usage_repo = UsageLogRepository(session)
+        await usage_repo.log(
+            organization_id=user.organization_id,
+            user_id=user.id,
+            action_type="ai_action_blocked",
+            quantity=1,
+        )
         raise HTTPException(
             status_code=429,
             detail=f"AI usage limit exceeded: {e.current} > {e.limit} for this month",
@@ -219,7 +211,7 @@ async def get_note_keywords(
             status_code=503,
             detail="AI keywords not available (OpenAI not configured)",
         )
-    await set_cached_keywords(redis, note_id, keywords)
+    await set_cached_keywords(redis, note.id, keywords)
     usage_repo = UsageLogRepository(session)
     await usage_repo.log(
         organization_id=user.organization_id,
@@ -228,3 +220,63 @@ async def get_note_keywords(
         quantity=1,
     )
     return KeywordsResponse(keywords=keywords)
+
+
+@router.post("/{note_id}/embeddings", response_model=EmbeddingsResponse)
+async def create_note_embeddings(
+    note: Note = Depends(get_note_or_404),
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
+) -> EmbeddingsResponse:
+    """Generate or return cached embeddings for the note. Quota-gated; backend-only OpenRouter key."""
+    cached = await get_cached_embedding(redis, note.id)
+    if cached is not None:
+        embedding_vec, dimension = cached
+        return EmbeddingsResponse(
+            status="ok",
+            dimension=dimension,
+            note_id=note.id,
+            cached=True,
+        )
+
+    org_repo = OrganizationRepository(session)
+    org = await org_repo.get_by_id(user.organization_id)
+    if org is None:
+        raise HTTPException(status_code=403, detail="Organization not found")
+    try:
+        await check_and_increment_ai_usage(redis, org.id, org.plan)
+    except RateLimitExceeded as e:
+        usage_repo = UsageLogRepository(session)
+        await usage_repo.log(
+            organization_id=user.organization_id,
+            user_id=user.id,
+            action_type="ai_action_blocked",
+            quantity=1,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail=f"AI usage limit exceeded: {e.current} > {e.limit} for this month",
+        )
+
+    try:
+        embedding_vec, dimension = await generate_embedding(note.content)
+    except OpenRouterNotConfiguredError:
+        raise HTTPException(
+            status_code=503,
+            detail="Embeddings not available (OpenRouter not configured)",
+        )
+    await set_cached_embedding(redis, note.id, embedding_vec)
+    usage_repo = UsageLogRepository(session)
+    await usage_repo.log(
+        organization_id=user.organization_id,
+        user_id=user.id,
+        action_type="ai_action",
+        quantity=1,
+    )
+    return EmbeddingsResponse(
+        status="ok",
+        dimension=dimension,
+        note_id=note.id,
+        cached=False,
+    )

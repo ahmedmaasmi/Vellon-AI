@@ -67,40 +67,40 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50 py-12">
-      <Card className="w-full max-w-md">
+    <div className="flex items-center justify-center min-h-screen bg-background py-12">
+      <Card className="w-full max-w-md border-border bg-card">
         <CardHeader>
-          <CardTitle>Create Account</CardTitle>
+          <CardTitle className="text-foreground">Create Account</CardTitle>
           <CardDescription>Start your journey with NoteMind AI.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Organization Name</label>
+              <label className="text-sm font-medium text-foreground">Organization Name</label>
               <Input {...register('organization_name')} placeholder="Acme Corp" />
               {errors.organization_name && <p className="text-sm text-red-500">{errors.organization_name.message}</p>}
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Organization Slug</label>
+              <label className="text-sm font-medium text-foreground">Organization Slug</label>
               <Input {...register('organization_slug')} placeholder="acme-corp" />
               {errors.organization_slug && <p className="text-sm text-red-500">{errors.organization_slug.message}</p>}
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Full Name (Optional)</label>
+              <label className="text-sm font-medium text-foreground">Full Name (Optional)</label>
               <Input {...register('display_name')} placeholder="John Doe" />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Email</label>
+              <label className="text-sm font-medium text-foreground">Email</label>
               <Input {...register('email')} type="email" placeholder="john@example.com" />
               {errors.email && <p className="text-sm text-red-500">{errors.email.message}</p>}
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Password</label>
+              <label className="text-sm font-medium text-foreground">Password</label>
               <Input {...register('password')} type="password" />
               {errors.password && <p className="text-sm text-red-500">{errors.password.message}</p>}
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Confirm Password</label>
+              <label className="text-sm font-medium text-foreground">Confirm Password</label>
               <Input {...register('confirmPassword')} type="password" />
               {errors.confirmPassword && <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>}
             </div>

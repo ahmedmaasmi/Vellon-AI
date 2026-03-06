@@ -20,6 +20,7 @@
 /frontend/.next/
 /frontend/.next/dev/
 /frontend/.next_old_broken/
+/frontend/.next_root_owned_broken/
 /frontend/out/
 
 # production

@@ -52,3 +52,12 @@ class KeywordsResponse(BaseModel):
     """AI-extracted keywords for a note."""
 
     keywords: list[str]
+
+
+class EmbeddingsResponse(BaseModel):
+    """Metadata after generating or retrieving embeddings for a note (no raw vector)."""
+
+    status: str = Field(..., description="ok")
+    dimension: int = Field(..., description="Embedding vector dimension")
+    note_id: UUID = Field(..., description="Note id")
+    cached: bool = Field(False, description="True if result was served from cache")

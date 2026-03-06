@@ -159,3 +159,23 @@ async def test_me_with_invalid_token_returns_401(client: AsyncClient) -> None:
         headers={"Authorization": "Bearer invalid.jwt.token"},
     )
     assert r.status_code == 401
+
+
+@pytest.mark.integration
+async def test_admin_only_allows_owner(client: AsyncClient) -> None:
+    """GET /auth/admin-only with owner token returns 200 (RBAC: owner allowed)."""
+    reg = {
+        "organization_name": "Admin Test Org",
+        "organization_slug": "admin-test-org",
+        "email": "owner@admin.example",
+        "password": "pass12345",
+    }
+    r_reg = await client.post("/api/v1/auth/register", json=reg)
+    assert r_reg.status_code == 200
+    token = r_reg.json()["access_token"]
+    r = await client.get(
+        "/api/v1/auth/admin-only",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    assert r.json().get("role") == "owner"

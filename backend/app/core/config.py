@@ -27,6 +27,9 @@ class Settings(BaseSettings):
 
     # AI (OpenAI). Optional for dev; required for summarize/keywords.
     openai_api_key: str | None = None
+    # OpenRouter (embeddings). Backend-only; never expose to frontend.
+    openrouter_api_key: str | None = None
+    openrouter_embed_model: str = "nvidia/llama-nemotron-embed-vl-1b-v2:free"
 
     # Cache TTL for AI responses (seconds)
     ai_cache_ttl_seconds: int = 3600
