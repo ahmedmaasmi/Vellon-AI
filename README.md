@@ -11,6 +11,8 @@ From the repo root you can run the backend (FastAPI, Postgres, Redis) and fronte
 docker compose up --build
 ```
 
+The API runs database migrations on startup, so the schema is applied automatically.
+
 - Frontend: http://localhost:3000  
 - API: http://localhost:8000  
 

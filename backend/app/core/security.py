@@ -5,25 +5,28 @@ Security primitives: password hashing, JWT access/refresh tokens, token validati
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+import bcrypt
 import jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Refresh token payload type
 REFRESH_TOKEN_TYPE = "refresh"
 
+# Bcrypt truncates at 72 bytes; pass through as bytes for hashing
+BCRYPT_MAX_PASSWORD_BYTES = 72
+
 
 def hash_password(plain: str) -> str:
-    """Hash a plaintext password with bcrypt."""
-    return pwd_context.hash(plain)
+    """Hash a plaintext password with bcrypt (truncated to 72 bytes per bcrypt limit)."""
+    raw = plain.encode("utf-8")[:BCRYPT_MAX_PASSWORD_BYTES]
+    return bcrypt.hashpw(raw, bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Verify a plaintext password against a bcrypt hash."""
-    return pwd_context.verify(plain, hashed)
+    raw = plain.encode("utf-8")[:BCRYPT_MAX_PASSWORD_BYTES]
+    return bcrypt.checkpw(raw, hashed.encode("utf-8"))
 
 
 def create_access_token(*, sub: UUID | str) -> str:

@@ -45,7 +45,7 @@ uvicorn app.main:app --reload
 docker compose up --build
 ```
 
-API at http://localhost:8000, frontend at http://localhost:3000. Use `backend/.env` (copy from `.env.example`) with `DATABASE_URL` and `REDIS_URL` using hostnames `postgres` and `redis` when running via root compose.
+API at http://localhost:8000, frontend at http://localhost:3000. Use `backend/.env` (copy from `.env.example`) with `DATABASE_URL` and `REDIS_URL` using hostnames `postgres` and `redis` when running via root compose. The API container runs **Alembic migrations** (`alembic upgrade head`) on startup before serving traffic, so the database schema is applied automatically.
 
 **Backend only** (from this directory):
 
@@ -68,6 +68,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 - Set `APP_ENV=production`, `DEBUG=false`, and a strong `SECRET_KEY` in production.
 
 ## Migrations
+
+- **Docker:** The API service runs `alembic upgrade head` on startup, so schema is applied when you `docker compose up`. No separate migration step is required for normal runs.
+- **Manual (new revisions or local DB):** From `backend/` with `DATABASE_URL` set (sync URL is used by Alembic via `env.py`):
 
 ```bash
 alembic revision --autogenerate -m "description"

@@ -16,7 +16,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./backend/app:/app/app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
     depends_on:
       postgres:
         condition: service_healthy

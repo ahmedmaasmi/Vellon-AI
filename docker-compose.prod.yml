@@ -4,7 +4,7 @@
 services:
   api:
     volumes: []
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
     ports: []  # Remove host port; expose only on internal network (use reverse proxy)
     deploy:
       resources:
