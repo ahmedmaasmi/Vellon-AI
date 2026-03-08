@@ -45,5 +45,6 @@ class CurrentUserResponse(BaseModel):
     email: str
     role: str
     display_name: str | None
+    avatar_url: str | None = None
 
     model_config = {"from_attributes": True}

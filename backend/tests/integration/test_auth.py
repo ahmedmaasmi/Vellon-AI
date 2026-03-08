@@ -119,6 +119,8 @@ async def test_me_with_valid_token_returns_user(client: AsyncClient) -> None:
     assert data["display_name"] == "Me User"
     assert "id" in data
     assert "role" in data
+    assert "avatar_url" in data
+    assert data["avatar_url"] is None  # not set at registration
 
 
 @pytest.mark.integration

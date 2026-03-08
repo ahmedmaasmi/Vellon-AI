@@ -31,6 +31,7 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         server_default="member",
     )  # owner | admin | member
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     __table_args__ = (UniqueConstraint("email", name="uq_users_email"),)
 

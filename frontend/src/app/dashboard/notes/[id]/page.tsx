@@ -177,11 +177,12 @@ export default function NoteEditorPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between sticky top-0 bg-background py-4 z-10 border-b border-border">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push('/dashboard')}>
+    <div className="h-full overflow-y-auto w-full p-8">
+      <div className="max-w-5xl mx-auto space-y-6">
+        {/* Toolbar */}
+        <div className="flex items-center justify-between sticky top-0 bg-white/80 backdrop-blur-sm py-4 z-10">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" className="hover:bg-muted" onClick={() => router.push('/dashboard')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <h1 className="text-xl font-semibold text-foreground">Edit Note</h1>
@@ -200,22 +201,22 @@ export default function NoteEditorPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Editor */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2 flex flex-col gap-4">
           <Input
             {...register('title')}
-            className="text-2xl font-bold border-none px-0 focus-visible:ring-0 bg-transparent placeholder:text-muted-foreground text-foreground"
+            className="text-4xl font-bold border-none px-0 focus-visible:ring-0 bg-transparent placeholder:text-muted-foreground/40 text-foreground h-auto py-2"
             placeholder="Note Title"
           />
           <textarea
             {...register('content')}
-            className="w-full min-h-[500px] p-4 rounded-lg border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-y"
-            placeholder="Start typing..."
+            className="w-full flex-1 min-h-[500px] p-0 border-none bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none text-lg leading-relaxed"
+            placeholder="Start typing your thoughts..."
           />
         </div>
 
         {/* AI Sidebar */}
         <div className="space-y-6">
-          <Card className="border-border bg-card">
+          <Card className="border-border bg-[#faf5f3] shadow-none rounded-2xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg text-foreground">
                 <Sparkles className="h-5 w-5 text-primary" />

@@ -97,6 +97,7 @@ async def me(user=Depends(get_current_user)) -> CurrentUserResponse:
         email=user.email,
         role=user.role,
         display_name=user.display_name,
+        avatar_url=user.avatar_url,
     )
 
 
