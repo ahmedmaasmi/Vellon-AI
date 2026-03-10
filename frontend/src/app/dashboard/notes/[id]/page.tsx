@@ -50,6 +50,15 @@ export default function NoteEditorPage() {
 
   const { register, handleSubmit, reset, watch } = useForm<NoteFormValues>();
 
+  const fetchTags = useCallback(async () => {
+    try {
+      const res = await api.get<TagItem[]>('/api/v1/tags');
+      setAllTags(res.data);
+    } catch {
+      setAllTags([]);
+    }
+  }, []);
+
   useEffect(() => {
     const fetchNote = async () => {
       try {
@@ -79,21 +88,12 @@ export default function NoteEditorPage() {
       }
     };
 
-    const fetchTags = useCallback(async () => {
-      try {
-        const res = await api.get<TagItem[]>('/api/v1/tags');
-        setAllTags(res.data);
-      } catch {
-        setAllTags([]);
-      }
-    }, []);
-
     if (noteId) {
       fetchNote();
       fetchQuota();
       fetchTags();
     }
-  }, [noteId, reset, router]);
+  }, [noteId, reset, router, fetchTags]);
 
   const attachTag = async (tagId: string) => {
     try {

@@ -15,6 +15,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { Eye, EyeOff } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+const DEBUG_AUTH = process.env.NEXT_PUBLIC_DEBUG_AUTH === 'true';
+
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
@@ -51,7 +53,9 @@ export default function SignInPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    if (hasHydrated && isAuthenticated) {
+    if (!hasHydrated) return;
+    if (isAuthenticated) {
+      if (DEBUG_AUTH) console.log('[auth-debug] signin: already authenticated, redirecting to dashboard');
       router.replace('/dashboard');
     }
   }, [hasHydrated, isAuthenticated, router]);
@@ -72,10 +76,13 @@ export default function SignInPage() {
       const userResponse = await api.get('/api/v1/auth/me');
       setUser(userResponse.data);
 
-      router.push('/dashboard');
+      if (DEBUG_AUTH) console.log('[auth-debug] signin: login success, navigating to dashboard');
+      router.replace('/dashboard');
     } catch (err: unknown) {
       const axErr = err as { response?: { data?: { detail?: string } } };
-      setError(axErr.response?.data?.detail || 'Failed to login. Please check your credentials.');
+      const message = axErr.response?.data?.detail || 'Failed to login. Please check your credentials.';
+      if (DEBUG_AUTH) console.log('[auth-debug] signin: login failure', message);
+      setError(message);
     } finally {
       setIsLoading(false);
     }

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+const DEBUG_AUTH = process.env.NEXT_PUBLIC_DEBUG_AUTH === 'true';
+
 interface User {
   id: string;
   email: string;
@@ -52,8 +54,16 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
       }),
-      onRehydrateStorage: () => () => {
-        useAuthStore.getState().setHasHydrated(true);
+      onRehydrateStorage: (state) => {
+        if (DEBUG_AUTH) console.log('[auth-debug] store: rehydrate-start', { isAuthenticated: state?.isAuthenticated ?? false });
+        return (rehydratedState, err) => {
+          if (err) {
+            if (DEBUG_AUTH) console.log('[auth-debug] store: rehydrate-end (error)', err);
+          } else {
+            if (DEBUG_AUTH) console.log('[auth-debug] store: rehydrate-end (ok)', { isAuthenticated: !!rehydratedState?.isAuthenticated });
+          }
+          useAuthStore.getState().setHasHydrated(true);
+        };
       },
     }
   )
