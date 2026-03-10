@@ -1,20 +1,28 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api, type QuotaResponse } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { ArrowLeft, Save, Trash2, Wand2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Wand2, Sparkles, Pin, Heart, Tag, X } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+interface TagItem {
+  id: string;
+  name: string;
+}
 
 interface Note {
   id: string;
   title: string;
   content: string;
   updated_at: string;
+  is_pinned?: boolean;
+  is_favorite?: boolean;
+  tags?: TagItem[];
 }
 
 interface NoteFormValues {
@@ -34,18 +42,26 @@ export default function NoteEditorPage() {
   const [embeddingsResult, setEmbeddingsResult] = useState<{ dimension: number; cached: boolean } | null>(null);
   const [quota, setQuota] = useState<QuotaResponse | null>(null);
   const [quotaError, setQuotaError] = useState<string | null>(null);
+  const [isPinned, setIsPinned] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [noteTags, setNoteTags] = useState<TagItem[]>([]);
+  const [allTags, setAllTags] = useState<TagItem[]>([]);
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
 
   const { register, handleSubmit, reset, watch } = useForm<NoteFormValues>();
 
   useEffect(() => {
     const fetchNote = async () => {
       try {
-        const response = await api.get(`/api/v1/notes/${noteId}`);
+        const response = await api.get<Note>(`/api/v1/notes/${noteId}`);
         const note = response.data;
         reset({
           title: note.title,
           content: note.content,
         });
+        setIsPinned(!!note.is_pinned);
+        setIsFavorite(!!note.is_favorite);
+        setNoteTags(note.tags ?? []);
       } catch (error) {
         console.error('Failed to fetch note:', error);
         router.push('/dashboard');
@@ -63,16 +79,51 @@ export default function NoteEditorPage() {
       }
     };
 
+    const fetchTags = useCallback(async () => {
+      try {
+        const res = await api.get<TagItem[]>('/api/v1/tags');
+        setAllTags(res.data);
+      } catch {
+        setAllTags([]);
+      }
+    }, []);
+
     if (noteId) {
       fetchNote();
       fetchQuota();
+      fetchTags();
     }
   }, [noteId, reset, router]);
+
+  const attachTag = async (tagId: string) => {
+    try {
+      await api.post(`/api/v1/notes/${noteId}/tags/${tagId}`);
+      const res = await api.get<Note>(`/api/v1/notes/${noteId}`);
+      setNoteTags(res.data.tags ?? []);
+      setTagDropdownOpen(false);
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
+    } catch {
+      // ignore
+    }
+  };
+
+  const detachTag = async (tagId: string) => {
+    try {
+      await api.delete(`/api/v1/notes/${noteId}/tags/${tagId}`);
+      setNoteTags((prev) => prev.filter((t) => t.id !== tagId));
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
+    } catch {
+      // ignore
+    }
+  };
+
+  const availableToAdd = allTags.filter((t) => !noteTags.some((nt) => nt.id === t.id));
 
   const onSubmit = async (data: NoteFormValues) => {
     setIsSaving(true);
     try {
       await api.put(`/api/v1/notes/${noteId}`, data);
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
     } catch (error) {
       console.error('Failed to save note:', error);
     } finally {
@@ -82,12 +133,31 @@ export default function NoteEditorPage() {
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this note?')) return;
-    
     try {
       await api.delete(`/api/v1/notes/${noteId}`);
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
       router.push('/dashboard');
     } catch (error) {
       console.error('Failed to delete note:', error);
+    }
+  };
+
+  const togglePin = async () => {
+    try {
+      await api.put(`/api/v1/notes/${noteId}`, { is_pinned: !isPinned });
+      setIsPinned((v) => !v);
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
+    } catch {
+      // ignore
+    }
+  };
+  const toggleFavorite = async () => {
+    try {
+      await api.put(`/api/v1/notes/${noteId}`, { is_favorite: !isFavorite });
+      setIsFavorite((v) => !v);
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
+    } catch {
+      // ignore
     }
   };
 
@@ -180,7 +250,7 @@ export default function NoteEditorPage() {
     <div className="h-full overflow-y-auto w-full p-8">
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Toolbar */}
-        <div className="flex items-center justify-between sticky top-0 bg-white/80 backdrop-blur-sm py-4 z-10">
+        <div className="flex items-center justify-between sticky top-0 bg-card/90 backdrop-blur-sm py-4 z-10 -mx-4 px-4 rounded-b-md">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" className="hover:bg-muted" onClick={() => router.push('/dashboard')}>
             <ArrowLeft className="h-5 w-5" />
@@ -188,6 +258,14 @@ export default function NoteEditorPage() {
           <h1 className="text-xl font-semibold text-foreground">Edit Note</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={togglePin} title={isPinned ? 'Unpin' : 'Pin'}>
+            <Pin className={`h-4 w-4 mr-2 ${isPinned ? 'fill-current' : ''}`} />
+            {isPinned ? 'Pinned' : 'Pin'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={toggleFavorite} title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}>
+            <Heart className={`h-4 w-4 mr-2 ${isFavorite ? 'fill-current text-red-500' : ''}`} />
+            {isFavorite ? 'Favorited' : 'Favorite'}
+          </Button>
           <Button variant="outline" size="sm" onClick={handleDelete} className="text-destructive hover:text-destructive hover:border-destructive">
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
@@ -196,6 +274,62 @@ export default function NoteEditorPage() {
             {isSaving ? <Spinner size="sm" className="mr-2" /> : <Save className="h-4 w-4 mr-2" />}
             Save
           </Button>
+        </div>
+
+        {/* Tags */}
+        <div className="flex flex-wrap items-center gap-2">
+          {noteTags.map((t) => (
+            <span
+              key={t.id}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-sm"
+            >
+              {t.name}
+              <button
+                type="button"
+                onClick={() => detachTag(t.id)}
+                className="hover:bg-muted-foreground/20 rounded-full p-0.5"
+                aria-label={`Remove tag ${t.name}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          <div className="relative">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTagDropdownOpen((v) => !v)}
+              className="gap-2"
+            >
+              <Tag className="h-4 w-4" />
+              Add tag
+            </Button>
+            {tagDropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  aria-hidden
+                  onClick={() => setTagDropdownOpen(false)}
+                />
+                <div className="absolute left-0 top-full mt-1 z-20 min-w-[160px] rounded-lg border border-border bg-card py-1 shadow-md">
+                  {availableToAdd.length === 0 ? (
+                    <p className="px-3 py-2 text-sm text-muted-foreground">No other tags</p>
+                  ) : (
+                    availableToAdd.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted"
+                        onClick={() => attachTag(t.id)}
+                      >
+                        {t.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -216,7 +350,7 @@ export default function NoteEditorPage() {
 
         {/* AI Sidebar */}
         <div className="space-y-6">
-          <Card className="border-border bg-[#faf5f3] shadow-none rounded-2xl">
+          <Card className="border-border bg-background shadow-none rounded-2xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg text-foreground">
                 <Sparkles className="h-5 w-5 text-primary" />
@@ -293,6 +427,7 @@ export default function NoteEditorPage() {
             </CardContent>
           </Card>
         </div>
+      </div>
       </div>
     </div>
   );

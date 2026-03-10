@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,7 @@ import { Input } from '@/components/ui/input';
 import { CardFooter } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { Eye, EyeOff } from 'lucide-react';
-
-import { AuthLeftPanel } from '@/app/(auth)/components/AuthLeftPanel';
+import { motion } from 'framer-motion';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -23,13 +22,39 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
+// Animation variants
+const containerVariants = {
+  hidden: { opacity: 0, y: 30 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.5,
+      ease: "easeOut",
+      when: "beforeChildren",
+      staggerChildren: 0.1,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+};
+
 export default function SignInPage() {
   const router = useRouter();
-  const { setTokens, setUser } = useAuthStore();
+  const { setTokens, setUser, isAuthenticated, hasHydrated } = useAuthStore();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (hasHydrated && isAuthenticated) {
+      router.replace('/dashboard');
+    }
+  }, [hasHydrated, isAuthenticated, router]);
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -57,25 +82,24 @@ export default function SignInPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-muted/30 p-4 font-handwriting">
-      <div className="w-full max-w-6xl flex flex-col md:flex-row min-h-[min(90vh,640px)] gap-8 md:gap-12">
-        {/* Left: visual panel (desktop only) */}
-        <AuthLeftPanel />
+    <div className="flex items-center justify-center min-h-screen bg-background p-4">
+      <div className="w-full max-w-lg flex flex-col justify-center items-center z-20">
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          className="w-full max-w-lg mx-auto bg-card p-8 md:p-10 shadow-xl shadow-primary/10 rounded-3xl relative text-card-foreground border border-border/50"
+        >
+            <motion.div variants={itemVariants}>
+              <h1 className="text-3xl md:text-4xl font-bold text-center mb-2">Welcome back!</h1>
+              <p className="text-lg text-center mb-8 text-muted-foreground">
+                Enter your credentials to jump back in.
+              </p>
+            </motion.div>
 
-        {/* Right: Sign-in form (Sticky Note) */}
-        <div className="flex-1 flex flex-col justify-center items-center p-4 md:p-8 z-20">
-          <div className="w-full max-w-md mx-auto bg-[#fef08a] p-8 md:p-10 shadow-[8px_8px_16px_rgba(0,0,0,0.15)] -rotate-2 relative text-black rounded-sm transition-transform hover:-rotate-1 duration-300">
-            {/* Sticky note tape effect */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-6 bg-black/10 -translate-y-3 shadow-sm rotate-2"></div>
-            
-            <h1 className="text-4xl md:text-5xl font-bold text-center mb-2 mt-2">Welcome back!</h1>
-            <p className="text-2xl text-center mb-8 text-neutral-800">
-              Enter your credentials to jump back in.
-            </p>
-
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-              <div className="space-y-2">
-                <label htmlFor="signin-email" className="text-2xl font-bold">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+              <motion.div variants={itemVariants} className="space-y-2">
+                <label htmlFor="signin-email" className="text-sm font-medium text-foreground">
                   Email
                 </label>
                 <Input
@@ -84,14 +108,15 @@ export default function SignInPage() {
                   type="email"
                   placeholder="example@mail.com"
                   autoComplete="email"
-                  className="bg-transparent border-0 border-b-2 border-neutral-400/50 rounded-none focus-visible:ring-0 focus-visible:border-black px-0 text-2xl placeholder:text-neutral-500 shadow-none h-auto py-2"
+                  className="bg-background border border-border rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary px-4 py-6 text-base placeholder:text-muted-foreground shadow-sm transition-all"
                 />
                 {errors.email && (
-                  <p className="text-xl text-red-600 font-bold">{errors.email.message}</p>
+                  <p className="text-sm text-destructive font-medium">{errors.email.message}</p>
                 )}
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="signin-password" className="text-2xl font-bold">
+              </motion.div>
+              
+              <motion.div variants={itemVariants} className="space-y-2">
+                <label htmlFor="signin-password" className="text-sm font-medium text-foreground">
                   Password
                 </label>
                 <div className="relative">
@@ -101,65 +126,73 @@ export default function SignInPage() {
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     autoComplete="current-password"
-                    className="bg-transparent border-0 border-b-2 border-neutral-400/50 rounded-none focus-visible:ring-0 focus-visible:border-black px-0 text-2xl placeholder:text-neutral-500 pr-10 shadow-none h-auto py-2"
+                    className="bg-background border border-border rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary px-4 py-6 text-base placeholder:text-muted-foreground pr-12 shadow-sm transition-all"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((p) => !p)}
-                    className="absolute right-0 top-1/2 -translate-y-1/2 text-neutral-700 hover:text-black"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showPassword ? <EyeOff className="h-6 w-6" /> : <Eye className="h-6 w-6" />}
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
                 {errors.password && (
-                  <p className="text-xl text-red-600 font-bold">{errors.password.message}</p>
+                  <p className="text-sm text-destructive font-medium">{errors.password.message}</p>
                 )}
-              </div>
+              </motion.div>
 
-              <div className="flex items-center justify-between text-xl mt-4">
-                <label className="flex items-center gap-2 cursor-pointer text-neutral-800 hover:text-black font-bold">
+              <motion.div variants={itemVariants} className="flex items-center justify-between text-sm mt-2">
+                <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground font-medium transition-colors">
                   <input
                     type="checkbox"
                     checked={rememberMe}
                     onChange={(e) => setRememberMe(e.target.checked)}
-                    className="rounded border-neutral-500 bg-transparent text-black focus:ring-black h-5 w-5 accent-black"
+                    className="rounded border-border bg-background text-primary focus:ring-primary/20 h-4 w-4 accent-primary transition-all"
                   />
                   Remember me
                 </label>
                 <Link
                   href="#"
-                  className="text-neutral-800 font-bold hover:underline hover:text-black"
+                  className="text-primary font-medium hover:underline hover:text-primary/80 transition-colors"
                   onClick={(e) => e.preventDefault()}
                 >
                   Forgot Password?
                 </Link>
-              </div>
+              </motion.div>
 
               {error && (
-                <p className="text-xl text-red-600 font-bold">{error}</p>
+                <motion.p variants={itemVariants} className="text-sm text-destructive font-medium">
+                  {error}
+                </motion.p>
               )}
 
-              <Button type="submit" className="w-full bg-neutral-900 hover:bg-black text-white text-2xl py-6 rounded-none shadow-md mt-8 font-handwriting" disabled={isLoading}>
-                {isLoading ? <Spinner size="sm" className="mr-2" /> : null}
-                Sign In
-              </Button>
+              <motion.div variants={itemVariants}>
+                <Button 
+                  type="submit" 
+                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-lg py-6 rounded-xl shadow-md hover:shadow-lg mt-4 transition-all hover:scale-[1.01] active:scale-[0.98]" 
+                  disabled={isLoading}
+                >
+                  {isLoading ? <Spinner size="sm" className="mr-2" /> : null}
+                  Sign In
+                </Button>
+              </motion.div>
             </form>
 
-            <div className="relative my-8">
+            <motion.div variants={itemVariants} className="relative my-8">
               <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t-2 border-neutral-400/50" />
+                <span className="w-full border-t border-border" />
               </div>
-              <span className="relative flex justify-center text-xl uppercase font-bold text-neutral-600 px-4 bg-[#fef08a]">
-                Or sign in with
+              <span className="relative flex justify-center text-sm uppercase font-medium text-muted-foreground px-4 bg-card">
+                Or continue with
               </span>
-            </div>
+            </motion.div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <motion.div variants={itemVariants} className="grid grid-cols-2 gap-4">
               <Button
                 type="button"
                 variant="outline"
-                className="w-full bg-transparent border-2 border-neutral-500 text-neutral-900 font-bold hover:bg-neutral-900 hover:text-white rounded-none text-2xl py-6 font-handwriting"
+                className="w-full bg-transparent border border-border text-foreground font-medium hover:bg-muted rounded-xl text-base py-6 transition-all"
                 disabled
               >
                 Google
@@ -167,23 +200,24 @@ export default function SignInPage() {
               <Button
                 type="button"
                 variant="outline"
-                className="w-full bg-transparent border-2 border-neutral-500 text-neutral-900 font-bold hover:bg-neutral-900 hover:text-white rounded-none text-2xl py-6 font-handwriting"
+                className="w-full bg-transparent border border-border text-foreground font-medium hover:bg-muted rounded-xl text-base py-6 transition-all"
                 disabled
               >
                 Apple
               </Button>
-            </div>
+            </motion.div>
 
-            <CardFooter className="px-0 pb-0 pt-8 justify-center border-0">
-              <p className="text-2xl text-neutral-800">
-                Don&apos;t have an account?{' '}
-                <Link href="/register" className="text-black font-bold hover:underline">
-                  Create an Account
-                </Link>
-              </p>
-            </CardFooter>
-          </div>
-        </div>
+            <motion.div variants={itemVariants}>
+              <CardFooter className="px-0 pb-0 pt-8 justify-center border-0">
+                <p className="text-sm text-muted-foreground">
+                  Don&apos;t have an account?{' '}
+                  <Link href="/register" className="text-primary font-medium hover:underline transition-colors">
+                    Create an Account
+                  </Link>
+                </p>
+              </CardFooter>
+            </motion.div>
+          </motion.div>
       </div>
     </div>
   );

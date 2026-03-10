@@ -83,6 +83,19 @@ async def get_note_or_404(
     return note
 
 
+async def get_note_with_tags_or_404(
+    note_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+) -> Note:
+    """Resolve note by id with tags loaded; raise 404 if not found. Use for GET note response."""
+    repo = NoteRepository(session)
+    note = await repo.get_note_by_id_with_tags(user_id=user.id, note_id=note_id)
+    if note is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return note
+
+
 async def require_ai_rate_limit(
     user: User = Depends(get_current_user),
     redis: Redis = Depends(get_redis),

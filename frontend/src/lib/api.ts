@@ -17,6 +17,7 @@ export const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 });
 
 // Request interceptor to add access token
@@ -31,29 +32,34 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor to handle token refresh
+// Auth paths where 401 should not trigger refresh (avoids loops during login/refresh)
+const isAuthEndpoint = (url: string) =>
+  /\/api\/v1\/auth\/(login|refresh)/.test(url);
+
+// Response interceptor to handle token refresh (cookie-based or legacy body)
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // If 401 and not a refresh attempt
     if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      const { refreshToken, setTokens, logout } = useAuthStore.getState();
-
-      if (!refreshToken) {
-        logout();
+      const path = originalRequest.url ?? '';
+      if (isAuthEndpoint(path)) {
         return Promise.reject(error);
       }
 
+      originalRequest._retry = true;
+      const { refreshToken, setTokens, logout } = useAuthStore.getState();
+
       try {
-        const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, {
-          refresh_token: refreshToken,
-        });
+        const response = await axios.post(
+          `${API_URL}/api/v1/auth/refresh`,
+          refreshToken ? { refresh_token: refreshToken } : {},
+          { withCredentials: true }
+        );
 
         const { access_token, refresh_token } = response.data;
-        setTokens(access_token, refresh_token || refreshToken);
+        setTokens(access_token, refresh_token ?? null);
 
         originalRequest.headers.Authorization = `Bearer ${access_token}`;
         return api(originalRequest);

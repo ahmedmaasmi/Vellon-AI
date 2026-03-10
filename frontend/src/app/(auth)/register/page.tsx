@@ -11,7 +11,7 @@ import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { AuthLeftPanel } from '@/app/(auth)/components/AuthLeftPanel';
+import { motion } from 'framer-motion';
 
 const registerSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -24,6 +24,26 @@ const registerSchema = z.object({
 });
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
+
+// Animation variants
+const containerVariants = {
+  hidden: { opacity: 0, y: 30 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.5,
+      ease: "easeOut",
+      when: "beforeChildren",
+      staggerChildren: 0.1,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 15 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+};
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -62,80 +82,87 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-muted/30 p-4 font-handwriting">
-      <div className="w-full max-w-6xl flex flex-col md:flex-row min-h-[min(90vh,640px)] gap-8 md:gap-12">
-        {/* Left: visual panel (desktop only) */}
-        <AuthLeftPanel />
-
-        {/* Right: Register form (Sticky Note) */}
-        <div className="flex-1 flex flex-col justify-center items-center p-4 md:p-8 z-20">
-          <div className="w-full max-w-md mx-auto bg-[#fef08a] p-8 md:p-10 shadow-[8px_8px_16px_rgba(0,0,0,0.15)] rotate-1 relative text-black rounded-sm transition-transform hover:-rotate-1 duration-300">
-            {/* Sticky note tape effect */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-6 bg-black/10 -translate-y-3 shadow-sm -rotate-2"></div>
-            
-            <h1 className="text-4xl md:text-5xl font-bold text-center mb-2 mt-2">Create Account</h1>
-            <p className="text-2xl text-center mb-8 text-neutral-800">
-              Start your journey with NoteMind AI.
-            </p>
+    <div className="flex items-center justify-center min-h-screen bg-background p-4">
+      <div className="w-full max-w-lg flex flex-col justify-center items-center z-20">
+        <motion.div 
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          className="w-full max-w-lg mx-auto bg-card p-8 md:p-10 shadow-xl shadow-primary/10 rounded-3xl relative text-card-foreground border border-border/50"
+        >
+            <motion.div variants={itemVariants}>
+              <h1 className="text-3xl md:text-4xl font-bold text-center mb-2">Create Account</h1>
+              <p className="text-lg text-center mb-8 text-muted-foreground">
+                Start your journey with Vellon AI.
+              </p>
+            </motion.div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-2xl font-bold">Full Name (Optional)</label>
+              <motion.div variants={itemVariants} className="space-y-1">
+                <label className="text-sm font-medium text-foreground">Full Name (Optional)</label>
                 <Input 
                   {...register('display_name')} 
                   placeholder="John Doe" 
-                  className="bg-transparent border-0 border-b-2 border-neutral-400/50 rounded-none focus-visible:ring-0 focus-visible:border-black px-0 text-2xl placeholder:text-neutral-500 shadow-none h-auto py-1"
+                  className="bg-background border border-border rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary px-4 py-5 text-base placeholder:text-muted-foreground shadow-sm transition-all"
                 />
-              </div>
-              <div className="space-y-1">
-                <label className="text-2xl font-bold">Email</label>
+              </motion.div>
+
+              <motion.div variants={itemVariants} className="space-y-1">
+                <label className="text-sm font-medium text-foreground">Email</label>
                 <Input 
                   {...register('email')} 
                   type="email" 
                   placeholder="john@example.com" 
-                  className="bg-transparent border-0 border-b-2 border-neutral-400/50 rounded-none focus-visible:ring-0 focus-visible:border-black px-0 text-2xl placeholder:text-neutral-500 shadow-none h-auto py-1"
+                  className="bg-background border border-border rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary px-4 py-5 text-base placeholder:text-muted-foreground shadow-sm transition-all"
                 />
-                {errors.email && <p className="text-xl text-red-600 font-bold">{errors.email.message}</p>}
-              </div>
-              <div className="space-y-1">
-                <label className="text-2xl font-bold">Password</label>
+                {errors.email && <p className="text-sm text-destructive font-medium mt-1">{errors.email.message}</p>}
+              </motion.div>
+
+              <motion.div variants={itemVariants} className="space-y-1">
+                <label className="text-sm font-medium text-foreground">Password</label>
                 <Input 
                   {...register('password')} 
                   type="password" 
                   placeholder="••••••••" 
-                  className="bg-transparent border-0 border-b-2 border-neutral-400/50 rounded-none focus-visible:ring-0 focus-visible:border-black px-0 text-2xl placeholder:text-neutral-500 shadow-none h-auto py-1"
+                  className="bg-background border border-border rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary px-4 py-5 text-base placeholder:text-muted-foreground shadow-sm transition-all"
                 />
-                {errors.password && <p className="text-xl text-red-600 font-bold">{errors.password.message}</p>}
-              </div>
-              <div className="space-y-1">
-                <label className="text-2xl font-bold">Confirm Password</label>
+                {errors.password && <p className="text-sm text-destructive font-medium mt-1">{errors.password.message}</p>}
+              </motion.div>
+
+              <motion.div variants={itemVariants} className="space-y-1">
+                <label className="text-sm font-medium text-foreground">Confirm Password</label>
                 <Input 
                   {...register('confirmPassword')} 
                   type="password" 
                   placeholder="••••••••" 
-                  className="bg-transparent border-0 border-b-2 border-neutral-400/50 rounded-none focus-visible:ring-0 focus-visible:border-black px-0 text-2xl placeholder:text-neutral-500 shadow-none h-auto py-1"
+                  className="bg-background border border-border rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary px-4 py-5 text-base placeholder:text-muted-foreground shadow-sm transition-all"
                 />
-                {errors.confirmPassword && <p className="text-xl text-red-600 font-bold">{errors.confirmPassword.message}</p>}
-              </div>
+                {errors.confirmPassword && <p className="text-sm text-destructive font-medium mt-1">{errors.confirmPassword.message}</p>}
+              </motion.div>
               
-              {error && <div className="text-xl text-red-600 font-bold">{error}</div>}
+              {error && <motion.div variants={itemVariants} className="text-sm text-destructive font-medium mt-2">{error}</motion.div>}
               
-              <Button type="submit" className="w-full bg-neutral-900 hover:bg-black text-white text-2xl py-6 rounded-none shadow-md mt-6 font-handwriting" disabled={isLoading}>
-                {isLoading ? <Spinner size="sm" className="mr-2" /> : null}
-                Create Account
-              </Button>
+              <motion.div variants={itemVariants} className="pt-2">
+                <Button 
+                  type="submit" 
+                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-lg py-6 rounded-xl shadow-md hover:shadow-lg mt-2 transition-all hover:scale-[1.01] active:scale-[0.98]" 
+                  disabled={isLoading}
+                >
+                  {isLoading ? <Spinner size="sm" className="mr-2" /> : null}
+                  Create Account
+                </Button>
+              </motion.div>
             </form>
 
-            <div className="mt-8 text-center border-t-2 border-neutral-400/50 pt-6">
-              <p className="text-2xl text-neutral-800">
+            <motion.div variants={itemVariants} className="mt-8 text-center border-t border-border pt-6">
+              <p className="text-sm text-muted-foreground">
                 Already have an account?{' '}
-                <Link href="/signin" className="text-black font-bold hover:underline">
+                <Link href="/signin" className="text-primary font-medium hover:underline transition-colors">
                   Sign In
                 </Link>
               </p>
-            </div>
-          </div>
-        </div>
+            </motion.div>
+          </motion.div>
       </div>
     </div>
   );

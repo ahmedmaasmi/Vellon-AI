@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expires_minutes: int = 60
     refresh_token_expires_days: int = 7
+    refresh_cookie_name: str = "refresh_token"
+    refresh_cookie_secure: bool = False  # set True in production (HTTPS)
 
     database_url: str = "postgresql+asyncpg://user:password@localhost:5432/app"
     redis_url: str = "redis://localhost:6379/0"

@@ -8,8 +8,6 @@ if [ ! -d node_modules ] || [ -z "$(ls -A node_modules 2>/dev/null)" ]; then
   RUN_CI=true
 elif [ -f package-lock.json ] && [ -d node_modules ] && [ package-lock.json -nt node_modules ]; then
   RUN_CI=true
-elif [ ! -d node_modules/@splinetool/react-spline ]; then
-  RUN_CI=true
 fi
 if [ "$RUN_CI" = true ]; then
   npm ci

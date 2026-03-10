@@ -15,6 +15,7 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.db.models.note import Note
+    from app.db.models.tag import Tag
 
 
 class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -37,6 +38,11 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     notes: Mapped[list["Note"]] = relationship(
         "Note",
+        back_populates="user",
+        lazy="raise",
+    )
+    tags: Mapped[list["Tag"]] = relationship(
+        "Tag",
         back_populates="user",
         lazy="raise",
     )

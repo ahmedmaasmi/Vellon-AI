@@ -1,0 +1,65 @@
+---
+description: Frontend must use the app color palette (design tokens), not arbitrary colors
+globs: frontend/**/*.{tsx,ts,css}
+alwaysApply: false
+---
+
+# App Color Palette
+
+All frontend UI must use the app’s design tokens. The palette is defined in `frontend/src/app/globals.css` and exposed via Tailwind in `frontend/tailwind.config.ts`.
+
+## Single source of truth
+
+- **CSS variables**: `frontend/src/app/globals.css` (`:root` — `--background`, `--foreground`, `--primary`, etc.)
+- **Tailwind**: Use the semantic color names that map to those variables (e.g. `background`, `foreground`, `primary`, `muted`, `accent`, `destructive`, `border`, `ring`).
+
+## Do
+
+- Use Tailwind semantic classes: `text-foreground`, `bg-background`, `text-primary`, `bg-primary`, `text-muted-foreground`, `bg-muted`, `bg-secondary`, `bg-accent`, `text-accent-foreground`, `border-border`, `ring-ring`, `bg-destructive`, `text-destructive-foreground`, etc.
+- For component variants (e.g. primary vs secondary button), use `primary`, `secondary`, `destructive` from the theme.
+- In custom CSS, use `rgb(var(--primary))`, `rgb(var(--foreground))`, etc. — never hardcode hex or raw RGB values that aren’t in the design tokens.
+
+## Don’t
+
+- Don’t use arbitrary hex in classNames (e.g. `text-[#2c1810]`, `bg-[#f0eadd]`, `border-[#d6caba]`). Use the matching token: `text-foreground`, `bg-muted`, `border-border`.
+- Don’t use generic Tailwind grays for UI (e.g. `text-gray-500`, `bg-gray-100`) unless the design explicitly calls for a neutral gray outside the palette. Prefer `text-muted-foreground`, `bg-muted`, etc.
+- Don’t introduce new hex or RGB values in CSS/TSX without adding a corresponding variable in `globals.css` and (if needed) in `tailwind.config.ts`.
+
+## Token reference (warm beige / brown / green)
+
+| Token                  | RGB (CSS)   | Hex       | Use                                |
+| ---------------------- | ----------- | --------- | ---------------------------------- |
+| background             | 248 245 240 | `#f8f5f0` | Page background (warm light beige) |
+| foreground             | 46 32 22    | `#2e2016` | Main text                          |
+| card                   | 252 249 245 | `#fcf9f5` | Cards, panels                      |
+| card-foreground        | 46 32 22    | `#2e2016` | Text on cards                      |
+| primary                | 101 67 33   | `#654321` | Primary actions (main brown)       |
+| primary-foreground     | 255 255 255 | `#ffffff` | Text on primary                    |
+| secondary              | 34 84 61    | `#22543d` | Secondary green                    |
+| secondary-foreground  | 255 255 255 | `#ffffff` | Text on secondary                  |
+| muted                  | 236 228 214 | `#ece4d6` | Subtle backgrounds                 |
+| muted-foreground       | 120 102 86  | `#786656` | Muted text                         |
+| accent                 | 209 231 221 | `#d1e7dd` | Light green highlights             |
+| accent-foreground      | 34 84 61    | `#22543d` | Text on accent                     |
+| destructive            | 220 53 69   | `#dc3545` | Danger / delete                    |
+| destructive-foreground | 255 255 255 | `#ffffff` | Text on destructive                |
+| border                 | 214 201 182 | `#d6c9b6` | Borders                            |
+| input                  | 214 201 182 | `#d6c9b6` | Input borders                      |
+| ring                   | 101 67 33   | `#654321` | Focus rings                        |
+
+## Quick reference
+
+| Use case              | Prefer                         |
+|-----------------------|--------------------------------|
+| Page/text color       | `text-foreground`              |
+| Page background       | `bg-background`                |
+| Cards, panels         | `bg-card`, `text-card-foreground` |
+| Primary actions/links | `bg-primary`, `text-primary-foreground`, `text-primary` |
+| Secondary/chrome      | `bg-secondary`, `text-secondary-foreground` |
+| De-emphasized text    | `text-muted-foreground`        |
+| De-emphasized bg      | `bg-muted`                     |
+| Highlights, hover     | `bg-accent`, `text-accent-foreground` |
+| Danger/delete         | `bg-destructive`, `text-destructive-foreground` |
+| Borders, inputs       | `border-border`, `input` / `ring-ring` |
+
+When adding or changing UI, use these tokens so the app stays on-palette and theming stays consistent.

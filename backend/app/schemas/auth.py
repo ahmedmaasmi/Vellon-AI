@@ -33,9 +33,9 @@ class TokenResponse(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    """Request body for POST /auth/refresh."""
+    """Request body for POST /auth/refresh (optional when refresh is sent via httpOnly cookie)."""
 
-    refresh_token: str = Field(..., min_length=1)
+    refresh_token: str | None = Field(None, min_length=1)
 
 
 class CurrentUserResponse(BaseModel):

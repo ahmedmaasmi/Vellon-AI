@@ -1,4 +1,4 @@
-# NoteWise (Fake Google Keep) — Project Guide
+# Vellon (Fake Google Keep) — Project Guide
 
 A complete walkthrough of the project: structure, files, HTML, code, and Tailwind styles.
 
@@ -6,7 +6,7 @@ A complete walkthrough of the project: structure, files, HTML, code, and Tailwin
 
 ## 1. Project Overview
 
-**NoteWise** is a Google Keep–style note-taking UI built with **Next.js 16**, **React 18**, and **Tailwind CSS**. It shows a fixed header, sidebar, a “take a note” bar, and a masonry-style grid of note cards. Data is static (no backend or persistence).
+**Vellon** is a Google Keep–style note-taking UI built with **Next.js 16**, **React 18**, and **Tailwind CSS**. It shows a fixed header, sidebar, a “take a note” bar, and a masonry-style grid of note cards. Data is static (no backend or persistence).
 
 ---
 
@@ -59,7 +59,7 @@ fake_google_keep/
 
 **Code:**
 - Imports **Inter** from `next/font/google` and applies it via `inter.className` on `<body>`.
-- **metadata**: `title: "NoteWise - Fake Google Keep"`, `description: "A replica of Google Keep made with Next.js"`.
+- **metadata**: `title: "Vellon AI | Smart Notes & AI Summaries"`, `description: "Vellon AI helps you capture notes, get AI summaries and keywords..."`, plus openGraph and twitter for SEO.
 - **children**: Rendered by Next.js (e.g. the content of `page.tsx`).
 **Tailwind:** Only via `inter.className` (font family). No utility classes in this file.
 
@@ -128,9 +128,9 @@ The app mostly uses Tailwind utilities; these variables could be used for themin
 header (fixed, full width, h-16)
 ├── div (logo area, w-64)
 │   ├── button (menu icon)
-│   └── div (logo + “NoteWise”)
+│   └── div (logo + “Vellon”)
 │       ├── div (blue icon wrapper) → SVG (document icon)
-│       └── span “NoteWise”
+│       └── span “Vellon”
 ├── div (flex-1, search, hidden on small screens)
 │   └── div (relative, group)
 │       ├── Search icon (absolute left)

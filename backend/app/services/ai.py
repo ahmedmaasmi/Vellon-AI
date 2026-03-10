@@ -122,6 +122,46 @@ async def extract_keywords(client: AsyncOpenAI | None, content: str) -> list[str
         return []
 
 
+async def generate_for_prompt(
+    client: AsyncOpenAI | None,
+    prompt_type: str,
+    seed: str = "",
+) -> str:
+    """Generate freeform text for dashboard: brainstorm ideas or draft summary.
+    Raises AINotConfiguredError if client is None.
+    prompt_type: 'brainstorm' | 'draft_summary'. Optional seed/context for user input."""
+    if client is None:
+        raise AINotConfiguredError("OpenAI API key not configured")
+    if prompt_type == "brainstorm":
+        system = (
+            "You are a creative assistant. Generate a short list of 5–8 brainstorm ideas or prompts "
+            "that could spark new notes or projects. Format as a simple list with one idea per line. "
+            "Keep each line concise (one short sentence or phrase)."
+        )
+        user = seed.strip() or "Give me some fresh ideas to explore in a note."
+    elif prompt_type == "draft_summary":
+        system = (
+            "You are a writing assistant. Write a short draft summary or placeholder paragraph "
+            "(2–4 sentences) that could be the start of a note. It should be generic and inviting "
+            "so the user can edit and expand it. Do not use bullet points."
+        )
+        user = seed.strip() or "Write a short draft I can use as the start of a new note."
+    else:
+        return ""
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user[:2000]},
+        ],
+        max_tokens=512,
+    )
+    choice = response.choices[0] if response.choices else None
+    if not choice or not choice.message or not choice.message.content:
+        return ""
+    return choice.message.content.strip()
+
+
 def get_openai_client() -> AsyncOpenAI | None:
     """Return an AsyncOpenAI client if API key is set, else None."""
     if not settings.openai_api_key:

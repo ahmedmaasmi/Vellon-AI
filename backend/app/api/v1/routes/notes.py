@@ -11,16 +11,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_note_or_404, get_redis
+from app.api.deps import get_current_user, get_note_or_404, get_note_with_tags_or_404, get_redis
 from app.db.models.note import Note
 from app.db.models.user import User
-from app.db.repositories import NoteRepository, UsageLogRepository
+from app.db.repositories import NoteRepository, TagRepository, UsageLogRepository
 from app.db.session import get_db_session
 from app.schemas.note import (
     EmbeddingsResponse,
     KeywordsResponse,
+    NoteCountsResponse,
     NoteCreateInput,
     NoteResponse,
+    NotesReorderInput,
     NoteUpdateInput,
     SummaryResponse,
 )
@@ -59,7 +61,20 @@ async def create_note(
         source=body.source,
         is_archived=body.is_archived,
     )
-    return NoteResponse.model_validate(note)
+    note_with_tags = await repo.get_note_by_id_with_tags(user_id=user.id, note_id=note.id)
+    assert note_with_tags is not None
+    return NoteResponse.model_validate(note_with_tags)
+
+
+@router.get("/counts", response_model=NoteCountsResponse)
+async def get_note_counts(
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+) -> NoteCountsResponse:
+    """Return counts for sidebar: all (non-deleted), archived, deleted."""
+    repo = NoteRepository(session)
+    counts = await repo.get_note_counts(user_id=user.id)
+    return NoteCountsResponse(**counts)
 
 
 @router.get("", response_model=list[NoteResponse])
@@ -68,18 +83,42 @@ async def list_notes(
     user: User = Depends(get_current_user),
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
+    archived: Annotated[bool | None, Query(alias="archived")] = None,
+    deleted: Annotated[bool, Query()] = False,
+    favorite: Annotated[bool | None, Query()] = None,
+    pinned: Annotated[bool | None, Query()] = None,
+    q: Annotated[str | None, Query()] = None,
+    tag_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> list[NoteResponse]:
     repo = NoteRepository(session)
     notes = await repo.list_notes(
         user_id=user.id,
         limit=limit,
         offset=offset,
+        archived_only=archived,
+        deleted_only=deleted,
+        favorite_only=favorite,
+        pinned_only=pinned,
+        search_q=q,
+        tag_id=tag_id,
     )
     return [NoteResponse.model_validate(note) for note in notes]
 
 
+@router.post("/reorder", response_model=dict[str, str])
+async def reorder_notes(
+    body: NotesReorderInput,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+) -> dict[str, str]:
+    """Update sort_order of notes to match the given list. Must be defined before /{note_id}."""
+    repo = NoteRepository(session)
+    await repo.reorder_notes(user_id=user.id, note_ids_in_order=body.note_ids)
+    return {"status": "ok"}
+
+
 @router.get("/{note_id}", response_model=NoteResponse)
-async def get_note(note: Note = Depends(get_note_or_404)) -> NoteResponse:
+async def get_note(note: Note = Depends(get_note_with_tags_or_404)) -> NoteResponse:
     return NoteResponse.model_validate(note)
 
 
@@ -99,7 +138,9 @@ async def update_note(
     )
     if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
-    return NoteResponse.model_validate(note)
+    note_with_tags = await repo.get_note_by_id_with_tags(user_id=user.id, note_id=note_id)
+    assert note_with_tags is not None
+    return NoteResponse.model_validate(note_with_tags)
 
 
 @router.delete("/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -115,6 +156,47 @@ async def delete_note(
     )
     if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{note_id}/tags/{tag_id}", response_model=NoteResponse)
+async def attach_tag_to_note(
+    note_id: uuid.UUID,
+    tag_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+) -> NoteResponse:
+    """Attach a tag to a note. Returns the note with tags loaded."""
+    note_repo = NoteRepository(session)
+    tag_repo = TagRepository(session)
+    note = await note_repo.get_note_by_id(user_id=user.id, note_id=note_id)
+    if note is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    tag = await tag_repo.get_tag_by_id(user_id=user.id, tag_id=tag_id)
+    if tag is None:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    await tag_repo.attach_to_note(note_id=note_id, tag_id=tag_id)
+    note = await note_repo.get_note_by_id_with_tags(user_id=user.id, note_id=note_id)
+    assert note is not None
+    return NoteResponse.model_validate(note)
+
+
+@router.delete("/{note_id}/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def detach_tag_from_note(
+    note_id: uuid.UUID,
+    tag_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    note_repo = NoteRepository(session)
+    tag_repo = TagRepository(session)
+    note = await note_repo.get_note_by_id(user_id=user.id, note_id=note_id)
+    if note is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    tag = await tag_repo.get_tag_by_id(user_id=user.id, tag_id=tag_id)
+    if tag is None:
+        raise HTTPException(status_code=404, detail="Tag not found")
+    await tag_repo.detach_from_note(note_id=note_id, tag_id=tag_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

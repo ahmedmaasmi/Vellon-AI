@@ -13,31 +13,31 @@
 }
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 255, 255, 255;
-  --background-end-rgb: 255, 255, 255;
+  --foreground-rgb: 46, 32, 22;
+  --background-start-rgb: 248, 245, 240;
+  --background-end-rgb: 248, 245, 240;
   --font-quran: "UthmanicHafs", "Traditional Arabic", "Scheherazade New",
     "Amiri", "Noto Naskh Arabic", "serif";
 
-  /* App design tokens (light theme) */
-  --background: 253 251 247;
-  --foreground: 44 24 16;
-  --card: 252 251 249;
-  --card-foreground: 44 24 16;
-  --primary: 30 58 138;
+  /* App design tokens (light theme) — warm beige / brown / green */
+  --background: 248 245 240;
+  --foreground: 46 32 22;
+  --card: 252 249 245;
+  --card-foreground: 46 32 22;
+  --primary: 101 67 33;
   --primary-foreground: 255 255 255;
-  --secondary: 226 212 188;
-  --secondary-foreground: 44 24 16;
-  --muted: 240 230 210;
-  --muted-foreground: 138 115 100;
-  --accent: 219 234 254;
-  --accent-foreground: 30 58 138;
-  --destructive: 239 68 68;
+  --secondary: 34 84 61;
+  --secondary-foreground: 255 255 255;
+  --muted: 236 228 214;
+  --muted-foreground: 120 102 86;
+  --accent: 209 231 221;
+  --accent-foreground: 34 84 61;
+  --destructive: 220 53 69;
   --destructive-foreground: 255 255 255;
-  --border: 214 202 186;
-  --input: 214 202 186;
-  --ring: 30 58 138;
-  --hero-bg: rgb(253 251 247);
+  --border: 214 201 182;
+  --input: 214 201 182;
+  --ring: 101 67 33;
+  --hero-bg: rgb(var(--background));
 }
 
 /* Quran font stack and RTL rendering utilities */

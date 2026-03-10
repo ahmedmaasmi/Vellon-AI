@@ -26,7 +26,7 @@ export default function Header() {
               <polyline points="10 9 9 9 8 9" />
             </svg>
           </div>
-          <span className="text-xl font-semibold text-gray-700">Keep</span>
+          <span className="text-xl font-semibold text-gray-700">Vellon</span>
         </div>
       </div>
 
