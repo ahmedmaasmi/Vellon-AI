@@ -11,7 +11,8 @@ import {
   Trash2,
   Tag,
   Plus,
-  Settings,
+  PanelLeftClose,
+  PanelRightOpen,
   LogOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,10 +32,11 @@ interface TagItem {
 }
 
 export function Sidebar() {
-  const { user, logout } = useAuthStore();
+  const { logout } = useAuthStore();
   const searchParams = useSearchParams();
   const filter = searchParams.get('filter') ?? 'all';
   const tagId = searchParams.get('tag_id') ?? null;
+  const [collapsed, setCollapsed] = useState(false);
   const [counts, setCounts] = useState<NoteCounts>({
     all: 0,
     archived: 0,
@@ -113,43 +115,37 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-64 h-full border-r border-border bg-card flex flex-col z-20">
+    <aside
+      className={`h-full border-r border-border bg-card flex flex-col z-20 transition-[width] duration-200 ${
+        collapsed ? 'w-14' : 'w-64'
+      }`}
+    >
       <div className="flex-1 flex flex-col overflow-y-auto">
         <div className="p-4 flex items-center justify-between sticky top-0 bg-card z-10">
-          <Link
-            href="/dashboard"
-            className="font-bold text-xl text-foreground flex items-center gap-2 hover:text-primary transition-colors"
-          >
-            <div className="bg-[#e4b5ab] text-white p-1 rounded-md">
-              <FileText className="h-5 w-5" />
-            </div>
-            Vellon AI
-          </Link>
-          <Button variant="ghost" size="icon" className="text-muted-foreground" asChild>
-            <Link href="/dashboard/settings">
-              <Settings className="h-5 w-5" />
+          {!collapsed && (
+            <Link
+              href="/dashboard"
+              className="font-bold text-xl text-foreground hover:text-primary transition-colors"
+            >
+              Vellon AI
             </Link>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground"
+            onClick={() => setCollapsed((c) => !c)}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? (
+              <PanelRightOpen className="h-5 w-5" />
+            ) : (
+              <PanelLeftClose className="h-5 w-5" />
+            )}
           </Button>
         </div>
 
-        <div className="px-4 py-2">
-          <div className="flex items-center gap-3 p-2 rounded-xl bg-muted/30">
-            {user?.avatar_url ? (
-              <img src={user.avatar_url} alt="" className="w-10 h-10 rounded-xl object-cover" />
-            ) : (
-              <div className="w-10 h-10 rounded-xl bg-[#c58a80] flex items-center justify-center text-white font-medium">
-                {user?.email?.charAt(0).toUpperCase() || 'U'}
-              </div>
-            )}
-            <div className="flex flex-col overflow-hidden">
-              <span className="text-sm font-semibold truncate">
-                {user?.email?.split('@')[0] || 'User'}
-              </span>
-              <span className="text-xs text-muted-foreground truncate">{user?.email}</span>
-            </div>
-          </div>
-        </div>
-
+        {!collapsed && (
         <div className="flex-1 px-4 py-4 space-y-6">
           <div>
             <h3 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
@@ -245,7 +241,9 @@ export function Sidebar() {
             </nav>
           </div>
         </div>
+        )}
 
+        {!collapsed && (
         <div className="p-4 mt-auto border-t border-border">
           <Button
             variant="ghost"
@@ -256,6 +254,7 @@ export function Sidebar() {
             Logout
           </Button>
         </div>
+        )}
       </div>
     </aside>
   );

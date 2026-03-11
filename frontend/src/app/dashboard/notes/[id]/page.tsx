@@ -6,9 +6,11 @@ import { api, type QuotaResponse } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { ArrowLeft, Save, Trash2, Wand2, Sparkles, Pin, Heart, Tag, X } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Wand2, Sparkles, Pin, Heart, Tag, X, ChevronDown, ChevronRight } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import KeywordRichEditor from '@/components/KeywordRichEditor';
+import WikipediaPreviewPanel from '@/components/WikipediaPreviewPanel';
 
 interface TagItem {
   id: string;
@@ -48,7 +50,16 @@ export default function NoteEditorPage() {
   const [allTags, setAllTags] = useState<TagItem[]>([]);
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
 
-  const { register, handleSubmit, reset, watch } = useForm<NoteFormValues>();
+  const { register, handleSubmit, reset, watch, setValue } = useForm<NoteFormValues>();
+  const [wikiKeyword, setWikiKeyword] = useState<string | null>(null);
+  const [aiSectionCollapsed, setAiSectionCollapsed] = useState({
+    summary: false,
+    keywords: false,
+    embeddings: false,
+  });
+  const toggleAiSection = (section: 'summary' | 'keywords' | 'embeddings') => {
+    setAiSectionCollapsed((prev) => ({ ...prev, [section]: !prev[section] }));
+  };
 
   const fetchTags = useCallback(async () => {
     try {
@@ -161,13 +172,29 @@ export default function NoteEditorPage() {
     }
   };
 
+  /** Treat as invalid if model returned a disclaimer instead of a real summary */
+  const isInvalidSummary = (text: string) => {
+    const lower = text.toLowerCase();
+    return (
+      /training data|knowledge cutoff|october 2023|my knowledge|i don't have access|i cannot access|as of my/i.test(lower) ||
+      text.trim().length < 10
+    );
+  };
+
   const handleSummarize = async () => {
     setQuotaError(null);
+    setSummary(null);
     setAiLoading('summary');
     try {
       await handleSubmit(onSubmit)();
-      const response = await api.get(`/api/v1/notes/${noteId}/summary`);
-      setSummary(response.data.summary);
+      const response = await api.get<{ summary: string }>(`/api/v1/notes/${noteId}/summary`);
+      const raw = response.data.summary ?? '';
+      if (isInvalidSummary(raw)) {
+        setSummary(null);
+        setQuotaError('Summary was not useful (model disclaimer). Try again or rephrase your note.');
+      } else {
+        setSummary(raw);
+      }
       const quotaRes = await api.get<QuotaResponse>('/api/v1/usage/quota');
       setQuota(quotaRes.data);
     } catch (err: unknown) {
@@ -341,14 +368,16 @@ export default function NoteEditorPage() {
             className="text-4xl font-bold border-none px-0 focus-visible:ring-0 bg-transparent placeholder:text-muted-foreground/40 text-foreground h-auto py-2"
             placeholder="Note Title"
           />
-          <textarea
-            {...register('content')}
-            className="w-full flex-1 min-h-[500px] p-0 border-none bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none text-lg leading-relaxed"
+          <KeywordRichEditor
+            value={watch('content') ?? ''}
+            onChangeText={(text) => setValue('content', text, { shouldDirty: true })}
+            onKeywordClick={setWikiKeyword}
             placeholder="Start typing your thoughts..."
+            className="w-full flex-1 min-h-[500px] p-0 border-none bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none text-lg leading-relaxed keyword-editor"
           />
         </div>
 
-        {/* AI Sidebar */}
+        {/* AI Sidebar + Wikipedia Preview */}
         <div className="space-y-6">
           <Card className="border-border bg-background shadow-none rounded-2xl">
             <CardHeader>
@@ -364,18 +393,28 @@ export default function NoteEditorPage() {
                 </div>
               )}
               <div className="space-y-2">
-                <Button
-                  variant="secondary"
-                  className="w-full justify-start"
-                  onClick={handleSummarize}
-                  disabled={aiDisabled}
-                  title={quota?.remaining === 0 ? 'AI quota exhausted for this month' : undefined}
-                >
-                  {aiLoading === 'summary' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                  Summarize Note
-                </Button>
-
-                {summary && (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="secondary"
+                    className="flex-1 justify-start"
+                    onClick={handleSummarize}
+                    disabled={aiDisabled}
+                    title={quota?.remaining === 0 ? 'AI quota exhausted for this month' : undefined}
+                  >
+                    {aiLoading === 'summary' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
+                    Summarize Note
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => toggleAiSection('summary')}
+                    aria-label={aiSectionCollapsed.summary ? 'Expand summary' : 'Collapse summary'}
+                  >
+                    {aiSectionCollapsed.summary ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </div>
+                {!aiSectionCollapsed.summary && summary && (
                   <div className="p-3 bg-primary/10 border border-primary/20 rounded-md text-sm text-foreground mt-2">
                     <h4 className="font-semibold mb-1">Summary:</h4>
                     {summary}
@@ -384,40 +423,66 @@ export default function NoteEditorPage() {
               </div>
 
               <div className="space-y-2">
-                <Button
-                  variant="secondary"
-                  className="w-full justify-start"
-                  onClick={handleExtractKeywords}
-                  disabled={aiDisabled}
-                  title={quota?.remaining === 0 ? 'AI quota exhausted for this month' : undefined}
-                >
-                  {aiLoading === 'keywords' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                  Extract Keywords
-                </Button>
-
-                {keywords && (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="secondary"
+                    className="flex-1 justify-start"
+                    onClick={handleExtractKeywords}
+                    disabled={aiDisabled}
+                    title={quota?.remaining === 0 ? 'AI quota exhausted for this month' : undefined}
+                  >
+                    {aiLoading === 'keywords' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
+                    Extract Keywords
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => toggleAiSection('keywords')}
+                    aria-label={aiSectionCollapsed.keywords ? 'Expand keywords' : 'Collapse keywords'}
+                  >
+                    {aiSectionCollapsed.keywords ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </div>
+                {!aiSectionCollapsed.keywords && keywords && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {keywords.map((keyword, i) => (
-                      <span key={i} className="px-2 py-1 bg-primary/20 text-primary text-xs rounded-full">
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setWikiKeyword(keyword)}
+                        className="px-2 py-1 bg-primary/20 text-primary text-xs rounded-full hover:bg-primary/30 transition-colors"
+                      >
                         {keyword}
-                      </span>
+                      </button>
                     ))}
                   </div>
                 )}
               </div>
 
               <div className="space-y-2">
-                <Button
-                  variant="secondary"
-                  className="w-full justify-start"
-                  onClick={handleGenerateEmbeddings}
-                  disabled={aiDisabled}
-                  title={quota?.remaining === 0 ? 'AI quota exhausted for this month' : undefined}
-                >
-                  {aiLoading === 'embeddings' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                  Generate Embeddings
-                </Button>
-                {embeddingsResult && (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="secondary"
+                    className="flex-1 justify-start"
+                    onClick={handleGenerateEmbeddings}
+                    disabled={aiDisabled}
+                    title={quota?.remaining === 0 ? 'AI quota exhausted for this month' : undefined}
+                  >
+                    {aiLoading === 'embeddings' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
+                    Generate Embeddings
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => toggleAiSection('embeddings')}
+                    aria-label={aiSectionCollapsed.embeddings ? 'Expand embeddings' : 'Collapse embeddings'}
+                  >
+                    {aiSectionCollapsed.embeddings ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </div>
+                {!aiSectionCollapsed.embeddings && embeddingsResult && (
                   <div className="p-3 bg-muted rounded-md text-sm text-muted-foreground mt-2">
                     Embeddings ready ({embeddingsResult.dimension} dimensions)
                     {embeddingsResult.cached && ' (cached)'}
@@ -426,6 +491,14 @@ export default function NoteEditorPage() {
               </div>
             </CardContent>
           </Card>
+
+          {wikiKeyword !== null && (
+            <WikipediaPreviewPanel
+              keyword={wikiKeyword}
+              onClose={() => setWikiKeyword(null)}
+              className="max-h-[400px]"
+            />
+          )}
         </div>
       </div>
       </div>

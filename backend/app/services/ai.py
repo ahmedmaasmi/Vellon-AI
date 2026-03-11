@@ -1,6 +1,6 @@
 """
 AI service: summarize and keyword extraction with optional Redis caching.
-Uses OpenAI API when configured; cache keys follow PRD: summarize:{note_id}, keywords:{note_id}.
+Uses OpenRouter (OpenAI-compatible API) when configured; cache keys follow PRD: summarize:{note_id}, keywords:{note_id}.
 """
 
 from __future__ import annotations
@@ -12,11 +12,13 @@ from openai import AsyncOpenAI
 from redis.asyncio import Redis
 
 from app.core.config import settings
-from app.integrations.redis.cache import get_cache, set_cache
+from app.integrations.redis.cache import delete_cache, get_cache, set_cache
+
+OPENROUTER_CHAT_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 class AINotConfiguredError(Exception):
-    """OpenAI API key is not configured."""
+    """OpenRouter API key is not configured."""
 
     pass
 
@@ -32,6 +34,16 @@ def _cache_key_keywords(note_id: uuid.UUID) -> str:
 async def get_cached_summary(redis: Redis, note_id: uuid.UUID) -> str | None:
     """Return cached summary for note_id, or None."""
     return await get_cache(redis, _cache_key_summary(note_id))
+
+
+async def delete_cached_summary(redis: Redis, note_id: uuid.UUID) -> None:
+    """Invalidate cached summary for note_id."""
+    await delete_cache(redis, _cache_key_summary(note_id))
+
+
+async def delete_cached_keywords(redis: Redis, note_id: uuid.UUID) -> None:
+    """Invalidate cached keywords for note_id."""
+    await delete_cache(redis, _cache_key_keywords(note_id))
 
 
 async def set_cached_summary(
@@ -75,11 +87,19 @@ async def set_cached_keywords(
 async def summarize_text(client: AsyncOpenAI | None, content: str) -> str:
     """Produce a short summary of the given text. Raises AINotConfiguredError if client is None."""
     if client is None:
-        raise AINotConfiguredError("OpenAI API key not configured")
+        raise AINotConfiguredError("OpenRouter API key not configured")
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.openrouter_chat_model,
         messages=[
-            {"role": "system", "content": "Summarize the following note in 1-3 concise sentences."},
+            {
+                "role": "system",
+                "content": (
+                    "Summarize the following note in 1-3 concise sentences. "
+                    "Base your summary only on the note content provided. "
+                    "Do not mention your training data, knowledge cutoff, or that you cannot access external information. "
+                    "If the note is empty or very short, say so briefly."
+                ),
+            },
             {"role": "user", "content": content[:8000]},
         ],
         max_tokens=256,
@@ -93,9 +113,9 @@ async def summarize_text(client: AsyncOpenAI | None, content: str) -> str:
 async def extract_keywords(client: AsyncOpenAI | None, content: str) -> list[str]:
     """Extract a list of keywords from the given text. Raises AINotConfiguredError if client is None."""
     if client is None:
-        raise AINotConfiguredError("OpenAI API key not configured")
+        raise AINotConfiguredError("OpenRouter API key not configured")
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.openrouter_chat_model,
         messages=[
             {
                 "role": "system",
@@ -131,7 +151,7 @@ async def generate_for_prompt(
     Raises AINotConfiguredError if client is None.
     prompt_type: 'brainstorm' | 'draft_summary'. Optional seed/context for user input."""
     if client is None:
-        raise AINotConfiguredError("OpenAI API key not configured")
+        raise AINotConfiguredError("OpenRouter API key not configured")
     if prompt_type == "brainstorm":
         system = (
             "You are a creative assistant. Generate a short list of 5–8 brainstorm ideas or prompts "
@@ -149,7 +169,7 @@ async def generate_for_prompt(
     else:
         return ""
     response = await client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.openrouter_chat_model,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user[:2000]},
@@ -162,8 +182,11 @@ async def generate_for_prompt(
     return choice.message.content.strip()
 
 
-def get_openai_client() -> AsyncOpenAI | None:
-    """Return an AsyncOpenAI client if API key is set, else None."""
-    if not settings.openai_api_key:
+def get_openrouter_client() -> AsyncOpenAI | None:
+    """Return an OpenAI-compatible client for OpenRouter if API key is set, else None."""
+    if not settings.openrouter_api_key:
         return None
-    return AsyncOpenAI(api_key=settings.openai_api_key)
+    return AsyncOpenAI(
+        api_key=settings.openrouter_api_key,
+        base_url=OPENROUTER_CHAT_BASE_URL,
+    )

@@ -15,7 +15,7 @@ from app.db.models.user import User
 from app.db.repositories import UsageLogRepository
 from app.db.session import get_db_session
 from app.schemas.ai import AIGenerateInput, AIGenerateResponse
-from app.services.ai import AINotConfiguredError, generate_for_prompt, get_openai_client
+from app.services.ai import AINotConfiguredError, generate_for_prompt, get_openrouter_client
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -43,13 +43,13 @@ async def generate_content(
             status_code=429,
             detail=f"AI usage limit exceeded: {e.current} > {e.limit} for this month",
         )
-    client = get_openai_client()
+    client = get_openrouter_client()
     try:
         content = await generate_for_prompt(client, body.prompt_type, seed=body.seed)
     except AINotConfiguredError:
         raise HTTPException(
             status_code=503,
-            detail="AI generation not available (OpenAI not configured)",
+            detail="AI generation not available (OpenRouter not configured)",
         )
     usage_repo = UsageLogRepository(session)
     await usage_repo.log(

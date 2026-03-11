@@ -57,3 +57,75 @@ body {
   color: rgb(var(--foreground));
   background: rgb(var(--background));
 }
+
+/* Editor container: force visible text so note content is never invisible */
+.keyword-editor {
+  color: rgb(var(--foreground));
+}
+
+/* Keyword highlight: animated green gradient text (left to right), no background.
+   Scoped to editor so only highlighted spans use it. Fallback color keeps text visible if clip fails. */
+.keyword-editor .keyword-highlight {
+  background: linear-gradient(
+    90deg,
+    #1e3f2b,
+    #2a5a3b,
+    #3e5f44,
+    #5e936c,
+    #3e5f44,
+    #2a5a3b,
+    #1e3f2b
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: #3e5f44; /* fallback when background-clip: text is not supported */
+  animation: keyword-gradient-text 3s ease-in-out infinite;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .keyword-editor .keyword-highlight {
+    color: transparent;
+  }
+}
+
+.keyword-editor .keyword-highlight:hover {
+  background: linear-gradient(
+    90deg,
+    #1e3f2b,
+    #2a5a3b,
+    #3e5f44,
+    #5e936c
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .keyword-editor .keyword-highlight {
+    animation: none;
+    background: linear-gradient(90deg, #1e3f2b, #2a5a3b, #3e5f44);
+    background-size: 100% 100%;
+  }
+}
+
+@keyframes keyword-gradient-text {
+  0%,
+  100% {
+    background-position: 100% 0;
+  }
+  50% {
+    background-position: 0 0;
+  }
+}
+
+/* Contenteditable placeholder */
+.keyword-editor:empty::before,
+.keyword-editor[data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: rgb(var(--muted-foreground) / 0.4);
+}

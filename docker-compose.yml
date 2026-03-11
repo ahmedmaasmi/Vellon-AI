@@ -1,5 +1,6 @@
 # Base compose: development (hot reload). For production use: docker compose -f docker-compose.yml -f docker-compose.prod.yml up
 # Run from repo root: docker compose up --build
+# Optional: set DATABASE_URL, REDIS_URL, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB in .env (see .env.example).
 
 services:
   api:
@@ -9,11 +10,11 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - path: backend/.env
+      - path: .env
         required: false
     environment:
-      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/app
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://user:password@postgres:5432/app}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
     volumes:
       - ./backend/app:/app/app
     command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
@@ -63,15 +64,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: app
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d app"]
+      test: ["CMD-SHELL", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 5

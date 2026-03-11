@@ -101,19 +101,29 @@ export default function HeroSection() {
         </div>
 
         <div className="flex items-center gap-4 text-muted-foreground">
-          <button className="p-2 hover:bg-muted rounded-full transition-colors hidden sm:block" type="button" aria-label="Theme">
-            <Moon className="w-5 h-5" />
-          </button>
-          <button className="p-2 hover:bg-muted rounded-full transition-colors" type="button" aria-label="Search">
-            <Search className="w-5 h-5" />
-          </button>
-          {isAuthenticated && user?.avatar_url && (
-            <Link href="/dashboard" className="flex items-center gap-2 ml-2 p-1 pr-3 hover:bg-muted rounded-full transition-colors border border-border">
-              <span className="relative w-8 h-8 rounded-full overflow-hidden bg-muted shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={user.avatar_url} alt="" width={32} height={32} className="w-8 h-8 object-cover" />
+          {!isAuthenticated && (
+            <>
+              <button className="p-2 hover:bg-muted rounded-full transition-colors hidden sm:block" type="button" aria-label="Theme">
+                <Moon className="w-5 h-5" />
+              </button>
+              <button className="p-2 hover:bg-muted rounded-full transition-colors" type="button" aria-label="Search">
+                <Search className="w-5 h-5" />
+              </button>
+            </>
+          )}
+          {isAuthenticated && (
+            <Link href="/dashboard" className="flex items-center gap-2 p-1 pr-3 hover:bg-muted rounded-full transition-colors border border-border" aria-label="Go to dashboard">
+              <span className="relative w-8 h-8 rounded-full overflow-hidden bg-muted shrink-0 flex items-center justify-center">
+                {user?.avatar_url ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={user.avatar_url} alt="" width={32} height={32} className="w-8 h-8 object-cover" />
+                ) : (
+                  <span className="w-full h-full flex items-center justify-center bg-[#c58a80] text-white text-sm font-medium">
+                    {(user?.display_name || user?.email || 'U').charAt(0).toUpperCase()}
+                  </span>
+                )}
               </span>
-              <span className="text-sm font-medium hidden sm:block">{user.display_name || user.email}</span>
+              <span className="text-sm font-medium hidden sm:block">{user?.display_name || user?.email}</span>
             </Link>
           )}
         </div>

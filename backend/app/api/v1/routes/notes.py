@@ -29,10 +29,12 @@ from app.schemas.note import (
 from app.core.rate_limit import RateLimitExceeded, check_and_increment_ai_usage
 from app.services.ai import (
     AINotConfiguredError,
+    delete_cached_keywords,
+    delete_cached_summary,
     extract_keywords,
     get_cached_keywords,
     get_cached_summary,
-    get_openai_client,
+    get_openrouter_client,
     set_cached_keywords,
     set_cached_summary,
     summarize_text,
@@ -128,6 +130,7 @@ async def update_note(
     body: NoteUpdateInput,
     session: AsyncSession = Depends(get_db_session),
     user: User = Depends(get_current_user),
+    redis: Redis = Depends(get_redis),
 ) -> NoteResponse:
     repo = NoteRepository(session)
     values = body.model_dump(exclude_unset=True)
@@ -138,6 +141,9 @@ async def update_note(
     )
     if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
+    if "title" in values or "content" in values:
+        await delete_cached_summary(redis, note_id)
+        await delete_cached_keywords(redis, note_id)
     note_with_tags = await repo.get_note_by_id_with_tags(user_id=user.id, note_id=note_id)
     assert note_with_tags is not None
     return NoteResponse.model_validate(note_with_tags)
@@ -226,13 +232,13 @@ async def get_note_summary(
             detail=f"AI usage limit exceeded: {e.current} > {e.limit} for this month",
         )
 
-    client = get_openai_client()
+    client = get_openrouter_client()
     try:
         summary = await summarize_text(client, note.content)
     except AINotConfiguredError:
         raise HTTPException(
             status_code=503,
-            detail="AI summary not available (OpenAI not configured)",
+            detail="AI summary not available (OpenRouter not configured)",
         )
     await set_cached_summary(redis, note.id, summary)
     usage_repo = UsageLogRepository(session)
@@ -270,13 +276,13 @@ async def get_note_keywords(
             detail=f"AI usage limit exceeded: {e.current} > {e.limit} for this month",
         )
 
-    client = get_openai_client()
+    client = get_openrouter_client()
     try:
         keywords = await extract_keywords(client, note.content)
     except AINotConfiguredError:
         raise HTTPException(
             status_code=503,
-            detail="AI keywords not available (OpenAI not configured)",
+            detail="AI keywords not available (OpenRouter not configured)",
         )
     await set_cached_keywords(redis, note.id, keywords)
     usage_repo = UsageLogRepository(session)
