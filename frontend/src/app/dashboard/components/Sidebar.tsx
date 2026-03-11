@@ -17,6 +17,17 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
+import {
+  getTagDotClass,
+  getTagDotStyle,
+  TAG_DOT_CLASSES,
+  setTagColor,
+  TAG_COLOR_COUNT,
+  getRecentColors,
+  addRecentColor,
+  addCustomColor,
+  type TagColorValue,
+} from '@/lib/tag-colors';
 
 interface NoteCounts {
   all: number;
@@ -46,7 +57,12 @@ export function Sidebar() {
   });
   const [tags, setTags] = useState<TagItem[]>([]);
   const [newTagName, setNewTagName] = useState('');
+  const [newTagColor, setNewTagColor] = useState<TagColorValue>(0);
   const [showAddTag, setShowAddTag] = useState(false);
+  const [showCustomColorPicker, setShowCustomColorPicker] = useState(false);
+  const [pendingCustomHex, setPendingCustomHex] = useState('#6366f1');
+  const [recentColors, setRecentColors] = useState<string[]>([]);
+  const [createTagError, setCreateTagError] = useState('');
 
   const fetchCounts = useCallback(async () => {
     try {
@@ -103,16 +119,51 @@ export function Sidebar() {
   const handleCreateTag = async () => {
     const name = newTagName.trim();
     if (!name) return;
+    setCreateTagError('');
     try {
-      await api.post('/api/v1/tags', { name });
+      const res = await api.post<TagItem>('/api/v1/tags', { name });
+      setTagColor(res.data.id, newTagColor);
+      addRecentColor(typeof newTagColor === 'number' ? String(newTagColor) : newTagColor);
       setNewTagName('');
+      setNewTagColor(0);
       setShowAddTag(false);
       fetchTags();
       window.dispatchEvent(new Event('dashboard:refresh-notes'));
-    } catch {
-      // show error or toast
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === 'object' && 'response' in err && err.response && typeof err.response === 'object' && 'data' in err.response && err.response.data && typeof err.response.data === 'object' && 'detail' in err.response.data
+          ? String((err.response.data as { detail: unknown }).detail)
+          : err instanceof Error
+            ? err.message
+            : 'Failed to create tag';
+      setCreateTagError(message);
     }
   };
+
+  const isColorSelected = (value: string | number) => {
+    if (typeof value === 'number') return newTagColor === value;
+    if (value.startsWith('#')) return newTagColor === value;
+    return newTagColor === parseInt(value, 10);
+  };
+
+  const handleRecentOrPaletteClick = (value: string | number) => {
+    const v = typeof value === 'string' && /^\d$/.test(value) ? parseInt(value, 10) : value;
+    setNewTagColor(v);
+  };
+
+  const handleUseCustomColor = () => {
+    const hex = pendingCustomHex.startsWith('#') ? pendingCustomHex : `#${pendingCustomHex}`;
+    if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) return;
+    addCustomColor(hex);
+    addRecentColor(hex);
+    setNewTagColor(hex);
+    setRecentColors(getRecentColors());
+    setShowCustomColorPicker(false);
+  };
+
+  useEffect(() => {
+    if (showAddTag) setRecentColors(getRecentColors());
+  }, [showAddTag]);
 
   return (
     <aside
@@ -195,7 +246,7 @@ export function Sidebar() {
             </nav>
           </div>
 
-          <div>
+          <div className="relative">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Tags
@@ -204,25 +255,106 @@ export function Sidebar() {
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                onClick={() => setShowAddTag((v) => !v)}
+                onClick={() => {
+                  const next = !showAddTag;
+                  if (next) setCreateTagError('');
+                  setShowAddTag(next);
+                }}
                 title="Add tag"
               >
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
             {showAddTag && (
-              <div className="flex gap-2 mb-2">
+              <div className="absolute left-0 right-0 top-full mt-1 z-20 rounded-lg border border-border bg-card shadow-lg p-2.5 space-y-2.5">
                 <input
                   type="text"
                   placeholder="Tag name"
-                  className="flex-1 px-2 py-1.5 text-sm border border-border rounded-lg bg-background"
+                  className="w-full px-2.5 py-1.5 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
                   value={newTagName}
-                  onChange={(e) => setNewTagName(e.target.value)}
+                  onChange={(e) => {
+                    setNewTagName(e.target.value);
+                    setCreateTagError('');
+                  }}
                   onKeyDown={(e) => e.key === 'Enter' && handleCreateTag()}
+                  autoFocus
                 />
-                <Button size="sm" onClick={handleCreateTag}>
-                  Add
-                </Button>
+                <div className="space-y-2">
+                  {recentColors.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs text-muted-foreground w-full">Recent</span>
+                      {recentColors.map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          title={v.startsWith('#') ? v : `Palette ${v}`}
+                          onClick={() => handleRecentOrPaletteClick(v)}
+                          className={`h-5 w-5 rounded-full flex-shrink-0 transition-transform hover:scale-110 ${
+                            v.startsWith('#') ? '' : TAG_DOT_CLASSES[parseInt(v, 10)] ?? ''
+                          } ${isColorSelected(v.startsWith('#') ? v : parseInt(v, 10)) ? 'ring-2 ring-offset-2 ring-offset-card ring-foreground/30' : ''}`}
+                          style={v.startsWith('#') ? { backgroundColor: v } : undefined}
+                          aria-label="Choose recent color"
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs text-muted-foreground mr-1">Color</span>
+                    {Array.from({ length: TAG_COLOR_COUNT }, (_, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        title={`Color ${i + 1}`}
+                        onClick={() => handleRecentOrPaletteClick(i)}
+                        className={`h-5 w-5 rounded-full flex-shrink-0 transition-transform hover:scale-110 ${TAG_DOT_CLASSES[i]} ${
+                          isColorSelected(i) ? 'ring-2 ring-offset-2 ring-offset-card ring-foreground/30' : ''
+                        }`}
+                        aria-label={`Choose color ${i + 1}`}
+                      />
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomColorPicker((v) => !v)}
+                      className="h-5 w-5 rounded-full flex-shrink-0 border-2 border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center justify-center"
+                      title="Create custom color"
+                      aria-label="Create custom color"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </button>
+                  </div>
+                  {showCustomColorPicker && (
+                    <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-border">
+                      <input
+                        type="color"
+                        value={pendingCustomHex}
+                        onChange={(e) => setPendingCustomHex(e.target.value)}
+                        className="h-8 w-12 cursor-pointer rounded border border-border bg-transparent"
+                        title="Pick a color"
+                        aria-label="Pick a custom color"
+                      />
+                      <span className="text-xs text-muted-foreground font-mono">{pendingCustomHex}</span>
+                      <Button type="button" size="sm" variant="secondary" onClick={handleUseCustomColor}>
+                        Use color
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => setShowCustomColorPicker(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                {createTagError && (
+                  <p className="text-xs text-destructive" role="alert">
+                    {createTagError}
+                  </p>
+                )}
+                <div className="flex justify-end gap-1.5 pt-0.5">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowAddTag(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="button" size="sm" onClick={handleCreateTag}>
+                    Add
+                  </Button>
+                </div>
               </div>
             )}
             <nav className="space-y-1">
@@ -233,7 +365,11 @@ export function Sidebar() {
                   className={linkClass(isActive('all', t.id))}
                 >
                   <div className="flex items-center gap-3">
-                    <Tag className="h-4 w-4" />
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${getTagDotClass(t.id)}`}
+                      style={getTagDotStyle(t.id)}
+                      aria-hidden
+                    />
                     <span>{t.name}</span>
                   </div>
                 </Link>

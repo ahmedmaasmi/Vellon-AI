@@ -11,6 +11,7 @@ import { useForm } from 'react-hook-form';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import KeywordRichEditor from '@/components/KeywordRichEditor';
 import WikipediaPreviewPanel from '@/components/WikipediaPreviewPanel';
+import { getTagPillClass, getTagPillStyle } from '@/lib/tag-colors';
 
 interface TagItem {
   id: string;
@@ -308,13 +309,14 @@ export default function NoteEditorPage() {
           {noteTags.map((t) => (
             <span
               key={t.id}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-sm"
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm font-medium ${getTagPillClass(t.id)}`}
+              style={getTagPillStyle(t.id)}
             >
               {t.name}
               <button
                 type="button"
                 onClick={() => detachTag(t.id)}
-                className="hover:bg-muted-foreground/20 rounded-full p-0.5"
+                className="hover:bg-black/10 dark:hover:bg-white/20 rounded-full p-0.5"
                 aria-label={`Remove tag ${t.name}`}
               >
                 <X className="h-3 w-3" />

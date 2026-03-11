@@ -3,9 +3,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FileText, Search, Plus, Pin, Heart, Calendar } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
 import { Spinner } from '@/components/ui/spinner';
+import { getColorForTag, getNoteCardStylesForHex } from '@/lib/tag-colors';
 
 interface Note {
   id: string;
@@ -20,13 +22,26 @@ interface Note {
 }
 
 const PASTEL_COLORS = [
-  'bg-[#BEE3F8]', // blue
-  'bg-[#C6F6D5]', // green
-  'bg-[#E9D8FD]', // purple
-  'bg-[#FEEBC8]', // yellow
-  'bg-[#FED7D7]', // red
-  'bg-[#E2E8F0]', // gray
+  'bg-gradient-to-br from-[#BEE3F8] to-[#90cdf4]/40', // blue
+  'bg-gradient-to-br from-[#C6F6D5] to-[#9ae6b4]/40', // green
+  'bg-gradient-to-br from-[#E9D8FD] to-[#d6bcfa]/40', // purple
+  'bg-gradient-to-br from-[#FEEBC8] to-[#fbd38d]/40', // yellow
+  'bg-gradient-to-br from-[#FED7D7] to-[#feb2b2]/40', // red
+  'bg-gradient-to-br from-[#E2E8F0] to-[#cbd5e0]/40', // gray
 ];
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
+};
 
 const TAG_COLORS = [
   'bg-blue-400',
@@ -36,6 +51,53 @@ const TAG_COLORS = [
   'bg-red-400',
   'bg-gray-400',
 ];
+
+const OUTLINE_COLORS = [
+  'border-blue-400',
+  'border-green-400',
+  'border-purple-400',
+  'border-orange-400',
+  'border-red-400',
+  'border-gray-400',
+];
+
+type NoteColorClasses = {
+  pastelClass: string;
+  tagColorClass: string;
+  outlineClass: string;
+  pastelStyle?: { background: string };
+  tagColorStyle?: { backgroundColor: string };
+  outlineStyle?: { borderColor: string };
+};
+
+function getNoteColorClasses(note: Note): NoteColorClasses {
+  const firstTag = note.tags?.[0];
+  const defaultIndex = PASTEL_COLORS.length - 1;
+  if (!firstTag) {
+    return {
+      pastelClass: PASTEL_COLORS[defaultIndex],
+      tagColorClass: TAG_COLORS[defaultIndex],
+      outlineClass: OUTLINE_COLORS[defaultIndex],
+    };
+  }
+  const resolved = getColorForTag(firstTag.id);
+  if (resolved.type === 'palette') {
+    return {
+      pastelClass: PASTEL_COLORS[resolved.index],
+      tagColorClass: TAG_COLORS[resolved.index],
+      outlineClass: OUTLINE_COLORS[resolved.index],
+    };
+  }
+  const styles = getNoteCardStylesForHex(resolved.hex);
+  return {
+    pastelClass: '',
+    tagColorClass: '',
+    outlineClass: '',
+    pastelStyle: styles.pastelStyle,
+    tagColorStyle: styles.tagColorStyle,
+    outlineStyle: styles.outlineStyle,
+  };
+}
 
 export default function DashboardEmptyState() {
   const router = useRouter();
@@ -96,9 +158,12 @@ export default function DashboardEmptyState() {
   const canReorder = filter === 'all' && !tagId && !searchForApi && notes.length > 1;
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [draggedColorClasses, setDraggedColorClasses] = useState<ReturnType<typeof getNoteColorClasses> | null>(null);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
+    const note = notes[index];
     setDraggedIndex(index);
+    setDraggedColorClasses(getNoteColorClasses(note));
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(index));
   };
@@ -108,23 +173,25 @@ export default function DashboardEmptyState() {
     setDragOverIndex(index);
   };
   const handleDragLeave = () => setDragOverIndex(null);
-  const handleDragEnd = () => {
+  const clearDragState = () => {
     setDraggedIndex(null);
     setDragOverIndex(null);
+    setDraggedColorClasses(null);
   };
+  const handleDragEnd = () => clearDragState();
   const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
     setDragOverIndex(null);
     const from = draggedIndex;
     if (from === null || from === dropIndex) {
-      setDraggedIndex(null);
+      clearDragState();
       return;
     }
     const reordered = [...notes];
     const [removed] = reordered.splice(from, 1);
     reordered.splice(dropIndex, 0, removed);
     setNotes(reordered);
-    setDraggedIndex(null);
+    clearDragState();
     try {
       await api.post('/api/v1/notes/reorder', { note_ids: reordered.map((n) => n.id) });
       window.dispatchEvent(new Event('dashboard:refresh-notes'));
@@ -195,10 +262,15 @@ export default function DashboardEmptyState() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-fr">
+          <motion.div 
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-fr"
+          >
+            <AnimatePresence>
             {notes.map((note, index) => {
-              const pastelClass = PASTEL_COLORS[index % PASTEL_COLORS.length];
-              const tagColorClass = TAG_COLORS[index % TAG_COLORS.length];
+              const { pastelClass, tagColorClass, pastelStyle, tagColorStyle } = getNoteColorClasses(note);
               const date = new Date(note.created_at).toLocaleDateString('en-US', {
                 day: 'numeric',
                 month: 'long',
@@ -208,7 +280,10 @@ export default function DashboardEmptyState() {
               const isDragOver = dragOverIndex === index;
 
               return (
-                <div
+                <motion.div
+                  layout
+                  variants={itemVariants}
+                  whileHover={{ scale: 1.03, rotate: index % 2 === 0 ? 1 : -1, zIndex: 10 }}
                   key={note.id}
                   draggable={canReorder}
                   onDragStart={(e) => handleDragStart(e, index)}
@@ -217,8 +292,17 @@ export default function DashboardEmptyState() {
                   onDragEnd={handleDragEnd}
                   onDrop={(e) => handleDrop(e, index)}
                   onClick={() => router.push(`/dashboard/notes/${note.id}`)}
-                  className={`${pastelClass} p-8 rounded-[2.5rem] relative cursor-pointer hover:shadow-xl transition-all duration-300 group min-h-[300px] flex flex-col overflow-hidden border border-black/5 shadow-sm ${isDragging ? 'opacity-50' : ''} ${isDragOver ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                  className={`${pastelClass} p-8 rounded-[2.5rem] relative cursor-pointer hover:shadow-xl transition-all duration-300 group min-h-[300px] flex flex-col overflow-hidden border border-black/5 shadow-sm ${isDragging ? 'opacity-50' : ''} ${isDragOver && !draggedColorClasses ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                  style={pastelStyle}
                 >
+                  {/* Outline placeholder at drop target using dragged note color */}
+                  {isDragOver && draggedColorClasses && (
+                    <div
+                      className={`absolute inset-0 rounded-[2.5rem] border-2 border-dashed ${draggedColorClasses.outlineClass} bg-transparent pointer-events-none min-h-[300px]`}
+                      style={draggedColorClasses.outlineStyle}
+                      aria-hidden
+                    />
+                  )}
                   {/* Top Indicators: date + pin and heart when favorite */}
                   <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-2 text-[13px] font-semibold text-black/60">
@@ -250,14 +334,15 @@ export default function DashboardEmptyState() {
                   </div>
 
                   {/* Bottom Left Corner Detail from the image */}
-                  <div className={`absolute top-0 left-0 w-8 h-8 ${tagColorClass} rounded-br-[1.5rem] opacity-80 shadow-sm`}></div>
+                  <div className={`absolute top-0 left-0 w-8 h-8 ${tagColorClass} rounded-br-[1.5rem] opacity-80 shadow-sm`} style={tagColorStyle}></div>
                   
                   {/* Hover effect highlight */}
                   <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-                </div>
+                </motion.div>
               );
             })}
-          </div>
+            </AnimatePresence>
+          </motion.div>
         )}
       </div>
     </div>
