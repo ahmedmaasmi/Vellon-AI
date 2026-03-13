@@ -13,8 +13,9 @@ services:
       - path: .env
         required: false
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://user:password@postgres:5432/app}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      # Use postgres/redis hostnames inside Docker; .env DATABASE_URL is for local (non-Docker) runs.
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-app}
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./backend/app:/app/app
     command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]

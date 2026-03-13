@@ -108,6 +108,7 @@ export default function DashboardEmptyState() {
   const [searchForApi, setSearchForApi] = useState('');
   const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setSearchForApi(searchQuery.trim()), 300);
@@ -117,6 +118,7 @@ export default function DashboardEmptyState() {
   const fetchNotes = useCallback(async () => {
     try {
       setIsLoading(true);
+      setFetchError(null);
       const params: Record<string, string> = {};
       if (filter === 'favorites') params.favorite = 'true';
       if (filter === 'archived') params.archived = 'true';
@@ -125,8 +127,16 @@ export default function DashboardEmptyState() {
       if (searchForApi) params.q = searchForApi;
       const response = await api.get<Note[]>('/api/v1/notes', { params });
       setNotes(response.data);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to fetch notes:', error);
+      const isNetworkError =
+        (error as { code?: string; message?: string }).code === 'ERR_NETWORK' ||
+        (error as { message?: string }).message === 'Network Error';
+      setFetchError(
+        isNetworkError
+          ? 'Couldn\'t connect to the server. Make sure the backend is running, then try again.'
+          : 'Something went wrong loading your notes. Try again.'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -242,7 +252,18 @@ export default function DashboardEmptyState() {
           )}
         </div>
 
-        {notes.length === 0 ? (
+        {fetchError ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="bg-destructive/10 p-6 rounded-full mb-6">
+              <FileText className="h-12 w-12 text-destructive/70" />
+            </div>
+            <h3 className="text-xl font-semibold mb-2 text-foreground">Couldn&apos;t load notes</h3>
+            <p className="text-muted-foreground max-w-sm mb-8">{fetchError}</p>
+            <Button onClick={() => fetchNotes()} className="bg-primary text-primary-foreground">
+              Try again
+            </Button>
+          </div>
+        ) : notes.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="bg-muted p-6 rounded-full mb-6">
               <FileText className="h-12 w-12 text-muted-foreground/50" />

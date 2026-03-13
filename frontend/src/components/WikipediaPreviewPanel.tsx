@@ -113,7 +113,7 @@ export default function WikipediaPreviewPanel({
         {state === 'loading' && (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
             <Loader2 className="h-8 w-8 animate-spin mb-2" />
-            <p className="text-sm">Loading...</p>
+            <p className="text-sm">Looking up &quot;{keyword.trim() || 'term'}&quot; on Wikipedia...</p>
           </div>
         )}
         {state === 'not_found' && (
