@@ -351,4 +351,5 @@ Redis is used for:
 | Frontend    | Next.js 16 App Router, Zustand persist, Axios + 401 refresh retry |
 | Deployment  | Docker Compose; dev with reload and host ports; prod without host ports |
 
+
 This covers the database, Redis, backend API, frontend app, Docker, and external integrations in one place. For a specific file or flow, the paths and section numbers above can be used to locate it quickly.
