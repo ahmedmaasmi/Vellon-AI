@@ -11,6 +11,7 @@ import { useForm } from 'react-hook-form';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import KeywordRichEditor from '@/components/KeywordRichEditor';
 import WikipediaPreviewPanel from '@/components/WikipediaPreviewPanel';
+import { getTagPillClass, getTagPillStyle } from '@/lib/tag-colors';
 
 interface TagItem {
   id: string;
@@ -142,8 +143,9 @@ export default function NoteEditorPage() {
     }
   };
 
+  const noteTitle = watch('title')?.trim() || 'Untitled Note';
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this note?')) return;
+    if (!confirm(`Delete "${noteTitle}"? You can restore it later from Recently Deleted.`)) return;
     try {
       await api.delete(`/api/v1/notes/${noteId}`);
       window.dispatchEvent(new Event('dashboard:refresh-notes'));
@@ -191,7 +193,7 @@ export default function NoteEditorPage() {
       const raw = response.data.summary ?? '';
       if (isInvalidSummary(raw)) {
         setSummary(null);
-        setQuotaError('Summary was not useful (model disclaimer). Try again or rephrase your note.');
+        setQuotaError('Summary wasn\'t useful this time. Try rephrasing your note or add more detail, then run again.');
       } else {
         setSummary(raw);
       }
@@ -201,11 +203,11 @@ export default function NoteEditorPage() {
       const status = (err as { response?: { status?: number; data?: { detail?: string } } })?.response?.status;
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       if (status === 429) {
-        setQuotaError(detail || 'AI usage limit reached for this month. Try again next month or upgrade your plan.');
+        setQuotaError(detail || 'Monthly AI credits used. You can still edit manually or try again next month.');
         const quotaRes = await api.get<QuotaResponse>('/api/v1/usage/quota').catch(() => null);
         if (quotaRes?.data) setQuota(quotaRes.data);
       } else {
-        setQuotaError('Failed to generate summary. Please try again.');
+        setQuotaError('Couldn\'t create a summary. Save your note and try again.');
       }
     } finally {
       setAiLoading(null);
@@ -225,11 +227,11 @@ export default function NoteEditorPage() {
       const status = (err as { response?: { status?: number; data?: { detail?: string } } })?.response?.status;
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       if (status === 429) {
-        setQuotaError(detail || 'AI usage limit reached for this month. Try again next month or upgrade your plan.');
+        setQuotaError(detail || 'Monthly AI credits used. You can still edit manually or try again next month.');
         const quotaRes = await api.get<QuotaResponse>('/api/v1/usage/quota').catch(() => null);
         if (quotaRes?.data) setQuota(quotaRes.data);
       } else {
-        setQuotaError('Failed to extract keywords. Please try again.');
+        setQuotaError('Couldn\'t find topics this time. Try shortening the note or removing very broad terms, then run again.');
       }
     } finally {
       setAiLoading(null);
@@ -252,11 +254,11 @@ export default function NoteEditorPage() {
       const status = (err as { response?: { status?: number; data?: { detail?: string } } })?.response?.status;
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       if (status === 429) {
-        setQuotaError(detail || 'AI usage limit reached for this month. Try again next month or upgrade your plan.');
+        setQuotaError(detail || 'Monthly AI credits used. You can still edit manually or try again next month.');
         const quotaRes = await api.get<QuotaResponse>('/api/v1/usage/quota').catch(() => null);
         if (quotaRes?.data) setQuota(quotaRes.data);
       } else {
-        setQuotaError(detail || 'Failed to generate embeddings. Ensure OpenRouter is configured.');
+        setQuotaError(detail || 'Couldn\'t prepare search data. Check that OpenRouter is configured and try again.');
       }
     } finally {
       setAiLoading(null);
@@ -308,13 +310,14 @@ export default function NoteEditorPage() {
           {noteTags.map((t) => (
             <span
               key={t.id}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-muted text-sm"
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm font-medium ${getTagPillClass(t.id)}`}
+              style={getTagPillStyle(t.id)}
             >
               {t.name}
               <button
                 type="button"
                 onClick={() => detachTag(t.id)}
-                className="hover:bg-muted-foreground/20 rounded-full p-0.5"
+                className="hover:bg-black/10 dark:hover:bg-white/20 rounded-full p-0.5"
                 aria-label={`Remove tag ${t.name}`}
               >
                 <X className="h-3 w-3" />
@@ -383,26 +386,72 @@ export default function NoteEditorPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg text-foreground">
                 <Sparkles className="h-5 w-5 text-primary" />
-                AI Assistant
+                AI tools for this note
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
               {quotaError && (
                 <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-sm text-amber-200">
                   {quotaError}
                 </div>
               )}
-              <div className="space-y-2">
+
+              {/* Primary: Find key topics */}
+              <section className="space-y-2" aria-label="Find key topics">
+                <p className="text-xs text-muted-foreground">Highlights important terms you can explore or turn into tags.</p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="default"
+                    className="flex-1 justify-start font-medium"
+                    onClick={handleExtractKeywords}
+                    disabled={aiDisabled}
+                    title={quota?.remaining === 0 ? 'Monthly AI credits used. You can still edit manually or try again next month.' : undefined}
+                  >
+                    {aiLoading === 'keywords' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
+                    Find key topics
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={() => toggleAiSection('keywords')}
+                    aria-label={aiSectionCollapsed.keywords ? 'Expand key topics' : 'Collapse key topics'}
+                  >
+                    {aiSectionCollapsed.keywords ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </Button>
+                </div>
+                {!aiSectionCollapsed.keywords && keywords && (
+                  <div className="mt-3 space-y-2">
+                    <h4 className="text-sm font-semibold text-foreground">Top topics</h4>
+                    <p className="text-xs text-muted-foreground">Click a topic to preview or add it as a tag below.</p>
+                    <div className="flex flex-wrap gap-2">
+                      {keywords.map((keyword, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setWikiKeyword(keyword)}
+                          className="px-2.5 py-1.5 bg-primary/20 text-primary text-xs font-medium rounded-full hover:bg-primary/30 transition-colors"
+                        >
+                          {keyword}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+
+              {/* Secondary: Summary */}
+              <section className="space-y-2 pt-2 border-t border-border" aria-label="Summary">
                 <div className="flex items-center gap-1">
                   <Button
                     variant="secondary"
                     className="flex-1 justify-start"
                     onClick={handleSummarize}
                     disabled={aiDisabled}
-                    title={quota?.remaining === 0 ? 'AI quota exhausted for this month' : undefined}
+                    title={quota?.remaining === 0 ? 'Monthly AI credits used. You can still edit manually or try again next month.' : undefined}
                   >
                     {aiLoading === 'summary' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                    Summarize Note
+                    Create quick summary
                   </Button>
                   <Button
                     variant="ghost"
@@ -416,61 +465,25 @@ export default function NoteEditorPage() {
                 </div>
                 {!aiSectionCollapsed.summary && summary && (
                   <div className="p-3 bg-primary/10 border border-primary/20 rounded-md text-sm text-foreground mt-2">
-                    <h4 className="font-semibold mb-1">Summary:</h4>
+                    <h4 className="font-semibold mb-1">Summary</h4>
                     {summary}
                   </div>
                 )}
-              </div>
+              </section>
 
-              <div className="space-y-2">
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="secondary"
-                    className="flex-1 justify-start"
-                    onClick={handleExtractKeywords}
-                    disabled={aiDisabled}
-                    title={quota?.remaining === 0 ? 'AI quota exhausted for this month' : undefined}
-                  >
-                    {aiLoading === 'keywords' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                    Extract Keywords
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    onClick={() => toggleAiSection('keywords')}
-                    aria-label={aiSectionCollapsed.keywords ? 'Expand keywords' : 'Collapse keywords'}
-                  >
-                    {aiSectionCollapsed.keywords ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </Button>
-                </div>
-                {!aiSectionCollapsed.keywords && keywords && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {keywords.map((keyword, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => setWikiKeyword(keyword)}
-                        className="px-2 py-1 bg-primary/20 text-primary text-xs rounded-full hover:bg-primary/30 transition-colors"
-                      >
-                        {keyword}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
+              {/* Tertiary: Semantic search */}
+              <section className="space-y-2 pt-2 border-t border-border" aria-label="Semantic search">
+                <p className="text-xs text-muted-foreground">Optimizes this note for related-note and vector search.</p>
                 <div className="flex items-center gap-1">
                   <Button
                     variant="secondary"
                     className="flex-1 justify-start"
                     onClick={handleGenerateEmbeddings}
                     disabled={aiDisabled}
-                    title={quota?.remaining === 0 ? 'AI quota exhausted for this month' : undefined}
+                    title={quota?.remaining === 0 ? 'Monthly AI credits used. You can still edit manually or try again next month.' : undefined}
                   >
                     {aiLoading === 'embeddings' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                    Generate Embeddings
+                    Prepare semantic search data
                   </Button>
                   <Button
                     variant="ghost"
@@ -484,11 +497,11 @@ export default function NoteEditorPage() {
                 </div>
                 {!aiSectionCollapsed.embeddings && embeddingsResult && (
                   <div className="p-3 bg-muted rounded-md text-sm text-muted-foreground mt-2">
-                    Embeddings ready ({embeddingsResult.dimension} dimensions)
+                    Search data ready ({embeddingsResult.dimension} dimensions)
                     {embeddingsResult.cached && ' (cached)'}
                   </div>
                 )}
-              </div>
+              </section>
             </CardContent>
           </Card>
 
