@@ -1,24 +1,29 @@
+'use client';
+
 import React from 'react';
-import { Coffee, Star, Leaf, Pencil, CheckSquare, MessageCircle } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Star, Leaf, Pencil, CheckSquare } from 'lucide-react';
+import { motion, useReducedMotion } from 'framer-motion';
 
 export default function CalendarBackground() {
   const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const reducedMotion = useReducedMotion();
+  const now = new Date();
+  const monthYear = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
 
   return (
     <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-muted/50 text-foreground flex flex-col font-handwriting opacity-30">
       
       {/* Background decorations — warm brown theme */}
       <motion.div 
-        animate={{ rotate: [-5, 5, -5] }}
-        transition={{ repeat: Infinity, duration: 8, ease: "easeInOut" }}
+        animate={reducedMotion ? { rotate: -5 } : { rotate: [-5, 5, -5] }}
+        transition={reducedMotion ? { duration: 0 } : { repeat: Infinity, duration: 8, ease: "easeInOut" }}
         className="absolute top-10 left-10 opacity-20"
       >
          <Leaf className="w-24 h-24 text-primary" strokeWidth={1} />
       </motion.div>
       <motion.div 
-        animate={{ rotate: [5, -5, 5] }}
-        transition={{ repeat: Infinity, duration: 9, ease: "easeInOut" }}
+        animate={reducedMotion ? { rotate: 5 } : { rotate: [5, -5, 5] }}
+        transition={reducedMotion ? { duration: 0 } : { repeat: Infinity, duration: 9, ease: "easeInOut" }}
         className="absolute bottom-20 right-10 opacity-20"
       >
          <Leaf className="w-32 h-32 text-primary/80 rotate-45" strokeWidth={1} />
@@ -27,7 +32,7 @@ export default function CalendarBackground() {
     {/* Header */}
     <div className="flex justify-between items-end px-8 pt-8 pb-4">
       <h2 className="text-5xl sm:text-7xl font-bold tracking-wider text-primary opacity-60">
-        MARCH 2026
+        {monthYear}
       </h2>
     </div>
 
