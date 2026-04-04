@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Caveat } from "next/font/google";
 import "./globals.css";
+import { AppProviders } from "@/components/providers/AppProviders";
 
 const inter = Inter({ subsets: ["latin"] });
 const caveat = Caveat({ subsets: ["latin"], variable: "--font-handwriting" });
@@ -30,8 +31,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} ${caveat.variable}`}>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.className} ${caveat.variable}`}>
+        <AppProviders>{children}</AppProviders>
+      </body>
     </html>
   );
 }

@@ -3,6 +3,9 @@ Application settings and environment configuration.
 Load from env / .env; keep secrets out of code.
 """
 
+from typing import Any
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +30,22 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://user:password@localhost:5432/app"
     redis_url: str = "redis://localhost:6379/0"
 
+    # CORS: comma-separated origins in env, e.g. "http://localhost:3000,https://app.example.com"
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
+    )
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v: Any) -> list[str]:
+        if v is None or v == "":
+            return ["http://localhost:3000", "http://127.0.0.1:3000"]
+        if isinstance(v, list):
+            return [str(x).strip() for x in v if str(x).strip()]
+        if isinstance(v, str):
+            return [p.strip() for p in v.split(",") if p.strip()]
+        return ["http://localhost:3000", "http://127.0.0.1:3000"]
+
     # OpenRouter (chat + embeddings). Backend-only; never expose to frontend.
     openrouter_api_key: str | None = None
     openrouter_chat_model: str = "openai/gpt-4o-mini"
@@ -34,6 +53,18 @@ class Settings(BaseSettings):
 
     # Cache TTL for AI responses (seconds)
     ai_cache_ttl_seconds: int = 3600
+
+    # Voice media (local disk). In Docker, mount a volume at this path.
+    media_root: str = "/app/media"
+
+    # ElevenLabs (STT / TTS / speech-to-speech). Backend-only; never expose to frontend.
+    elevenlabs_api_key: str | None = None
+    elevenlabs_stt_model: str = "scribe_v2"
+    elevenlabs_tts_voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
+    elevenlabs_tts_model: str = "eleven_multilingual_v2"
+    elevenlabs_sts_model: str = "eleven_multilingual_sts_v2"
+    # Max upload size for voice memo original audio (bytes)
+    voice_upload_max_bytes: int = 25 * 1024 * 1024
 
     # Rate limits per plan (AI actions per month)
     rate_limit_ai_free: int = 50

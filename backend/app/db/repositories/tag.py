@@ -68,3 +68,22 @@ class TagRepository:
                 note_tags.c.tag_id == tag_id,
             )
         )
+
+    async def update_tag_name(self, user_id: uuid.UUID, tag_id: uuid.UUID, name: str) -> Tag | None:
+        """Rename tag if owned by user. Returns None if missing. Caller handles name conflicts."""
+        tag = await self.get_tag_by_id(user_id, tag_id)
+        if tag is None:
+            return None
+        tag.name = name.strip()
+        await self._session.flush()
+        await self._session.refresh(tag)
+        return tag
+
+    async def delete_tag(self, user_id: uuid.UUID, tag_id: uuid.UUID) -> bool:
+        """Delete tag and note associations (CASCADE). Returns False if not found."""
+        tag = await self.get_tag_by_id(user_id, tag_id)
+        if tag is None:
+            return False
+        await self._session.delete(tag)
+        await self._session.flush()
+        return True

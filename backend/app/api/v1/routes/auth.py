@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_redis, require_roles
 from app.core.config import settings
 from app.db.repositories import UserRepository
+from app.db.models.user import User
 from app.db.session import get_db_session
 from app.schemas.auth import (
     CurrentUserResponse,
@@ -17,6 +18,7 @@ from app.schemas.auth import (
     RefreshRequest,
     RegisterRequest,
     TokenResponse,
+    UserProfileUpdateInput,
 )
 from app.services.auth import (
     AuthService,
@@ -146,7 +148,7 @@ async def logout(response: Response) -> None:
 
 
 @router.get("/me", response_model=CurrentUserResponse)
-async def me(user=Depends(get_current_user)) -> CurrentUserResponse:
+async def me(user: User = Depends(get_current_user)) -> CurrentUserResponse:
     """Return the current authenticated user."""
     return CurrentUserResponse(
         id=user.id,
@@ -154,6 +156,33 @@ async def me(user=Depends(get_current_user)) -> CurrentUserResponse:
         role=user.role,
         display_name=user.display_name,
         avatar_url=user.avatar_url,
+        plan=user.plan,
+    )
+
+
+@router.patch("/me", response_model=CurrentUserResponse)
+async def update_me(
+    body: UserProfileUpdateInput,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+) -> CurrentUserResponse:
+    """Update display name and/or avatar URL."""
+    payload = body.model_dump(exclude_unset=True)
+    if "display_name" in payload:
+        dn = payload["display_name"]
+        user.display_name = dn.strip() if isinstance(dn, str) and dn.strip() else None
+    if "avatar_url" in payload:
+        av = payload["avatar_url"]
+        user.avatar_url = av.strip() if isinstance(av, str) and av.strip() else None
+    await session.flush()
+    await session.refresh(user)
+    return CurrentUserResponse(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        display_name=user.display_name,
+        avatar_url=user.avatar_url,
+        plan=user.plan,
     )
 
 

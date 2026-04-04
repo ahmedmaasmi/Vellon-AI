@@ -103,15 +103,19 @@ export default function DashboardLayout({
 
   if (isAuthenticated) {
     return (
-      <div className="h-screen w-full bg-background flex overflow-hidden">
+      <div className="dashboard-shell h-screen w-full bg-background flex overflow-hidden">
         <Sidebar />
         {isNoteSelected && <NotesList />}
-        <div className={`flex-1 overflow-hidden flex justify-center bg-background relative ${isNoteSelected ? 'py-8 pr-16 pl-8' : 'p-0'}`}>
-          <main className={`w-full h-full overflow-hidden flex relative ${
-            isNoteSelected 
-              ? 'max-w-5xl bg-card shadow-xl border border-border rounded-sm' 
-              : 'max-w-none bg-background'
-          }`}>
+        <div
+          className={`flex-1 overflow-hidden flex justify-center bg-background relative shadow-panel-depth ${isNoteSelected ? 'py-8 pr-16 pl-8' : 'p-0'}`}
+        >
+          <main
+            className={`w-full h-full overflow-hidden flex relative ${
+              isNoteSelected
+                ? 'max-w-5xl bg-card/98 backdrop-blur-sm shadow-elevated border border-border/80 rounded-2xl'
+                : 'max-w-none bg-transparent'
+            }`}
+          >
             {children}
           </main>
         </div>

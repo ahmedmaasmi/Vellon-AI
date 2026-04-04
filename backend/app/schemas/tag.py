@@ -13,6 +13,12 @@ class TagCreateInput(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
 
 
+class TagUpdateInput(BaseModel):
+    """Input for renaming a tag."""
+
+    name: str = Field(..., min_length=1, max_length=128)
+
+
 class TagResponse(BaseModel):
     """Response DTO for a tag."""
 

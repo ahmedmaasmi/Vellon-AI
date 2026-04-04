@@ -231,6 +231,8 @@ export default function KeywordRichEditor({
       data-placeholder={placeholder}
       role="textbox"
       aria-multiline="true"
+      aria-label={placeholder}
+      id="note-body-editor"
     />
   );
 }

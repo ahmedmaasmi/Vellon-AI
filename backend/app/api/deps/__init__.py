@@ -13,7 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.rate_limit import RateLimitExceeded, check_and_increment_ai_usage
+from app.core.rate_limit import RateLimitExceeded, check_and_increment_ai_usage, normalize_plan
 from app.core.security import decode_access_token
 from app.db.models.note import Note
 from app.db.models.user import User
@@ -105,7 +105,7 @@ async def require_ai_rate_limit(
     Call this on AI endpoints (e.g. summarize, keywords) before performing the action.
     """
     try:
-        await check_and_increment_ai_usage(redis, user.id)
+        await check_and_increment_ai_usage(redis, user.id, plan=normalize_plan(user.plan))
     except RateLimitExceeded as e:
         raise HTTPException(
             status_code=429,

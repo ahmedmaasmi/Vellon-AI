@@ -80,3 +80,7 @@ ENV
 
 # Optional: OS files
 .DS_Store
+
+# Voice uploads (keep directory with .gitkeep only)
+backend/media/*
+!backend/media/.gitkeep

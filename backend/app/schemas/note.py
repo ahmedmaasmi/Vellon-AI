@@ -5,6 +5,8 @@ Note API schemas: create input and response DTOs for the service layer.
 from datetime import datetime
 from uuid import UUID
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -52,6 +54,14 @@ class NoteResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     tags: list[TagRefResponse] = []
+    # Voice / ElevenLabs pipeline (no raw filesystem paths exposed)
+    voice_audio_available: bool = False
+    voice_status: str | None = None
+    voice_error: str | None = None
+    transcript_language: str | None = None
+    translated_text: str | None = None
+    voice_duration_seconds: float | None = None
+    sts_audio_available: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -93,6 +103,12 @@ class KeywordsResponse(BaseModel):
     keywords: list[str]
 
 
+class DescriptionResponse(BaseModel):
+    """AI-generated description of a voice memo from its transcript."""
+
+    description: str
+
+
 class EmbeddingsResponse(BaseModel):
     """Metadata after generating or retrieving embeddings for a note (no raw vector)."""
 
@@ -100,3 +116,22 @@ class EmbeddingsResponse(BaseModel):
     dimension: int = Field(..., description="Embedding vector dimension")
     note_id: UUID = Field(..., description="Note id")
     cached: bool = Field(False, description="True if result was served from cache")
+
+
+class NoteTranslateInput(BaseModel):
+    """Translate note transcript/body via OpenRouter."""
+
+    target_language: str = Field(..., min_length=2, max_length=64)
+
+
+class NoteTtsInput(BaseModel):
+    """Text-to-speech source selection."""
+
+    source: Literal["content", "translated", "custom"] = "content"
+    text: str | None = Field(None, max_length=50000)
+
+
+class NoteStsInput(BaseModel):
+    """Optional voice id for speech-to-speech; defaults to settings.elevenlabs_tts_voice_id."""
+
+    voice_id: str | None = Field(None, max_length=128)

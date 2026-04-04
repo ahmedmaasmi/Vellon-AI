@@ -10,7 +10,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_redis
-from app.core.rate_limit import RateLimitExceeded, check_and_increment_ai_usage
+from app.core.rate_limit import RateLimitExceeded, check_and_increment_ai_usage, normalize_plan
 from app.db.models.user import User
 from app.db.repositories import UsageLogRepository
 from app.db.session import get_db_session
@@ -31,7 +31,7 @@ async def generate_content(
     if body.prompt_type not in ("brainstorm", "draft_summary"):
         raise HTTPException(status_code=400, detail="prompt_type must be 'brainstorm' or 'draft_summary'")
     try:
-        await check_and_increment_ai_usage(redis, user.id)
+        await check_and_increment_ai_usage(redis, user.id, plan=normalize_plan(user.plan))
     except RateLimitExceeded as e:
         usage_repo = UsageLogRepository(session)
         await usage_repo.log(

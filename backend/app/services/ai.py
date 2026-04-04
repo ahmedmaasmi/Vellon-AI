@@ -31,6 +31,10 @@ def _cache_key_keywords(note_id: uuid.UUID) -> str:
     return f"keywords:{note_id}"
 
 
+def _cache_key_describe(note_id: uuid.UUID) -> str:
+    return f"describe:{note_id}"
+
+
 async def get_cached_summary(redis: Redis, note_id: uuid.UUID) -> str | None:
     """Return cached summary for note_id, or None."""
     return await get_cache(redis, _cache_key_summary(note_id))
@@ -44,6 +48,27 @@ async def delete_cached_summary(redis: Redis, note_id: uuid.UUID) -> None:
 async def delete_cached_keywords(redis: Redis, note_id: uuid.UUID) -> None:
     """Invalidate cached keywords for note_id."""
     await delete_cache(redis, _cache_key_keywords(note_id))
+
+
+async def get_cached_description(redis: Redis, note_id: uuid.UUID) -> str | None:
+    """Return cached voice-memo description for note_id, or None."""
+    return await get_cache(redis, _cache_key_describe(note_id))
+
+
+async def delete_cached_description(redis: Redis, note_id: uuid.UUID) -> None:
+    """Invalidate cached description for note_id."""
+    await delete_cache(redis, _cache_key_describe(note_id))
+
+
+async def set_cached_description(
+    redis: Redis,
+    note_id: uuid.UUID,
+    description: str,
+    ttl_seconds: int | None = None,
+) -> None:
+    """Store voice-memo description in cache."""
+    ttl = ttl_seconds if ttl_seconds is not None else settings.ai_cache_ttl_seconds
+    await set_cache(redis, _cache_key_describe(note_id), description, ttl_seconds=ttl)
 
 
 async def set_cached_summary(
@@ -103,6 +128,33 @@ async def summarize_text(client: AsyncOpenAI | None, content: str) -> str:
             {"role": "user", "content": content[:8000]},
         ],
         max_tokens=256,
+    )
+    choice = response.choices[0] if response.choices else None
+    if not choice or not choice.message or not choice.message.content:
+        return ""
+    return choice.message.content.strip()
+
+
+async def describe_voice_memo(client: AsyncOpenAI | None, content: str) -> str:
+    """Describe what the user said in a voice memo transcript. Raises AINotConfiguredError if client is None."""
+    if client is None:
+        raise AINotConfiguredError("OpenRouter API key not configured")
+    response = await client.chat.completions.create(
+        model=settings.openrouter_chat_model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "The following text is a transcript of a voice memo (what the user said out loud). "
+                    "Describe what they talked about: main topics, intent, tone, and any clear action items "
+                    "or key points. Write 2-5 short paragraphs or a structured list if that fits better. "
+                    "Base your answer only on the transcript. Do not mention training data, knowledge cutoff, "
+                    "or that you cannot hear audio—you are only analyzing the written transcript."
+                ),
+            },
+            {"role": "user", "content": content[:8000]},
+        ],
+        max_tokens=512,
     )
     choice = response.choices[0] if response.choices else None
     if not choice or not choice.message or not choice.message.content:
@@ -175,6 +227,35 @@ async def generate_for_prompt(
             {"role": "user", "content": user[:2000]},
         ],
         max_tokens=512,
+    )
+    choice = response.choices[0] if response.choices else None
+    if not choice or not choice.message or not choice.message.content:
+        return ""
+    return choice.message.content.strip()
+
+
+async def translate_text(
+    client: AsyncOpenAI | None,
+    content: str,
+    target_language: str,
+) -> str:
+    """Translate text to target_language (e.g. Spanish, es). Raises AINotConfiguredError if client is None."""
+    if client is None:
+        raise AINotConfiguredError("OpenRouter API key not configured")
+    lang = target_language.strip()[:64]
+    response = await client.chat.completions.create(
+        model=settings.openrouter_chat_model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    f"Translate the following text into {lang}. "
+                    "Return only the translation, no quotes, preamble, or explanation."
+                ),
+            },
+            {"role": "user", "content": content[:8000]},
+        ],
+        max_tokens=4096,
     )
     choice = response.choices[0] if response.choices else None
     if not choice or not choice.message or not choice.message.content:

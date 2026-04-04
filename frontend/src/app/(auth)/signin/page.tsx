@@ -14,6 +14,7 @@ import { CardFooter } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { Eye, EyeOff } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 
 const DEBUG_AUTH = process.env.NEXT_PUBLIC_DEBUG_AUTH === 'true';
 
@@ -159,13 +160,17 @@ export default function SignInPage() {
                   />
                   Remember me
                 </label>
-                <Link
-                  href="#"
+                <button
+                  type="button"
                   className="text-primary font-medium hover:underline hover:text-primary/80 transition-colors"
-                  onClick={(e) => e.preventDefault()}
+                  onClick={() =>
+                    toast.message('Password reset coming soon', {
+                      description: 'Contact support if you need help accessing your account.',
+                    })
+                  }
                 >
                   Forgot Password?
-                </Link>
+                </button>
               </motion.div>
 
               {error && (
@@ -199,17 +204,25 @@ export default function SignInPage() {
               <Button
                 type="button"
                 variant="outline"
-                className="w-full bg-transparent border border-border text-foreground font-medium hover:bg-muted rounded-xl text-base py-6 transition-all"
-                disabled
+                className="w-full bg-transparent border border-border text-foreground font-medium hover:bg-muted rounded-xl text-base py-6 transition-all relative"
+                title="Coming soon"
+                onClick={() => toast.message('Google sign-in coming soon')}
               >
+                <span className="absolute -top-2 right-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border border-border">
+                  Soon
+                </span>
                 Google
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="w-full bg-transparent border border-border text-foreground font-medium hover:bg-muted rounded-xl text-base py-6 transition-all"
-                disabled
+                className="w-full bg-transparent border border-border text-foreground font-medium hover:bg-muted rounded-xl text-base py-6 transition-all relative"
+                title="Coming soon"
+                onClick={() => toast.message('Apple sign-in coming soon')}
               >
+                <span className="absolute -top-2 right-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border border-border">
+                  Soon
+                </span>
                 Apple
               </Button>
             </motion.div>

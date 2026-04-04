@@ -46,5 +46,13 @@ class CurrentUserResponse(BaseModel):
     role: str
     display_name: str | None
     avatar_url: str | None = None
+    plan: str = "free"
 
     model_config = {"from_attributes": True}
+
+
+class UserProfileUpdateInput(BaseModel):
+    """PATCH /auth/me — optional profile fields."""
+
+    display_name: str | None = Field(None, max_length=255)
+    avatar_url: str | None = Field(None, max_length=512)

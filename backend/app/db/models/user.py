@@ -33,6 +33,13 @@ class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )  # owner | admin | member
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Billing / quota: free | pro | team (Stripe can update later)
+    plan: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="free",
+        server_default="free",
+    )
 
     __table_args__ = (UniqueConstraint("email", name="uq_users_email"),)
 

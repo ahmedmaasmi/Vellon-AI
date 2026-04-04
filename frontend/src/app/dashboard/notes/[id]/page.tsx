@@ -1,17 +1,52 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { api, type QuotaResponse } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { ArrowLeft, Save, Trash2, Wand2, Sparkles, Pin, Heart, Tag, X, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  ArrowLeft,
+  Save,
+  Trash2,
+  Wand2,
+  Sparkles,
+  Pin,
+  Heart,
+  X,
+  Mic,
+  Volume2,
+  Languages,
+  RefreshCw,
+  Radio,
+  BookOpen,
+  AlertCircle,
+  Plus,
+  CheckCircle2,
+} from 'lucide-react';
 import { useForm } from 'react-hook-form';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { toast } from 'sonner';
 import KeywordRichEditor from '@/components/KeywordRichEditor';
 import WikipediaPreviewPanel from '@/components/WikipediaPreviewPanel';
 import { getTagPillClass, getTagPillStyle } from '@/lib/tag-colors';
+import { formatVoiceDuration, isVoiceMemo } from '@/lib/note-kind';
+
+const DETAIL_WAVE_BARS = [16, 26, 12, 32, 18, 28, 10, 30, 20, 34, 14, 24];
+
+function VoiceMemoDetailWaveform({ className }: { className?: string }) {
+  return (
+    <div className={`flex h-12 max-w-[200px] items-end gap-px ${className ?? ''}`} aria-hidden>
+      {DETAIL_WAVE_BARS.map((h, i) => (
+        <span
+          key={i}
+          className="w-0.5 shrink-0 rounded-full bg-secondary/50 dark:bg-secondary/45"
+          style={{ height: `${h}px` }}
+        />
+      ))}
+    </div>
+  );
+}
 
 interface TagItem {
   id: string;
@@ -22,10 +57,18 @@ interface Note {
   id: string;
   title: string;
   content: string;
+  source?: string;
   updated_at: string;
   is_pinned?: boolean;
   is_favorite?: boolean;
   tags?: TagItem[];
+  voice_audio_available?: boolean;
+  voice_status?: string | null;
+  voice_error?: string | null;
+  transcript_language?: string | null;
+  translated_text?: string | null;
+  voice_duration_seconds?: number | null;
+  sts_audio_available?: boolean;
 }
 
 interface NoteFormValues {
@@ -33,14 +76,18 @@ interface NoteFormValues {
   content: string;
 }
 
+type SidebarTab = 'insights' | 'voice' | 'lookup';
+
 export default function NoteEditorPage() {
   const params = useParams();
   const router = useRouter();
   const noteId = params.id as string;
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [aiLoading, setAiLoading] = useState<'summary' | 'keywords' | 'embeddings' | null>(null);
+  const [aiLoading, setAiLoading] = useState<'summary' | 'keywords' | 'embeddings' | 'describe' | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const [voiceDescription, setVoiceDescription] = useState<string | null>(null);
+  const [noteSource, setNoteSource] = useState<string>('web');
   const [keywords, setKeywords] = useState<string[] | null>(null);
   const [embeddingsResult, setEmbeddingsResult] = useState<{ dimension: number; cached: boolean } | null>(null);
   const [quota, setQuota] = useState<QuotaResponse | null>(null);
@@ -51,16 +98,68 @@ export default function NoteEditorPage() {
   const [allTags, setAllTags] = useState<TagItem[]>([]);
   const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
 
-  const { register, handleSubmit, reset, watch, setValue } = useForm<NoteFormValues>();
+  const [voiceAudioAvailable, setVoiceAudioAvailable] = useState(false);
+  const [stsAudioAvailable, setStsAudioAvailable] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [transcriptLanguage, setTranscriptLanguage] = useState<string | null>(null);
+  const [translatedText, setTranslatedText] = useState<string | null>(null);
+  const [originalAudioUrl, setOriginalAudioUrl] = useState<string | null>(null);
+  const [stsAudioUrl, setStsAudioUrl] = useState<string | null>(null);
+  const [translateLang, setTranslateLang] = useState('Spanish');
+  const [voiceBusy, setVoiceBusy] = useState<string | null>(null);
+  const [voiceDurationSeconds, setVoiceDurationSeconds] = useState<number | null>(null);
+
+  const { register, handleSubmit, reset, watch, setValue, getValues, formState } = useForm<NoteFormValues>();
+  const [autoSaveState, setAutoSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const [wikiKeyword, setWikiKeyword] = useState<string | null>(null);
-  const [aiSectionCollapsed, setAiSectionCollapsed] = useState({
-    summary: false,
-    keywords: false,
-    embeddings: false,
-  });
-  const toggleAiSection = (section: 'summary' | 'keywords' | 'embeddings') => {
-    setAiSectionCollapsed((prev) => ({ ...prev, [section]: !prev[section] }));
-  };
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('insights');
+
+  const handleKeywordClick = useCallback((keyword: string) => {
+    setWikiKeyword(keyword);
+    setSidebarTab('lookup');
+  }, []);
+
+  useEffect(() => {
+    if (wikiKeyword === null && sidebarTab === 'lookup') {
+      setSidebarTab('insights');
+    }
+  }, [wikiKeyword, sidebarTab]);
+
+  const watchedTitle = watch('title');
+  const watchedContent = watch('content');
+
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (formState.isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [formState.isDirty]);
+
+  useEffect(() => {
+    if (!noteId || isLoading) return;
+    if (!formState.isDirty) return;
+    const timer = window.setTimeout(async () => {
+      setAutoSaveState('saving');
+      const vals = getValues();
+      try {
+        await api.put(`/api/v1/notes/${noteId}`, { title: vals.title, content: vals.content });
+        reset(vals);
+        setAutoSaveState('saved');
+        window.dispatchEvent(new Event('dashboard:refresh-notes'));
+        window.setTimeout(() => setAutoSaveState('idle'), 1600);
+      } catch {
+        setAutoSaveState('error');
+        toast.error('Auto-save failed');
+      }
+    }, 2000);
+    return () => window.clearTimeout(timer);
+  }, [watchedTitle, watchedContent, formState.isDirty, noteId, isLoading, getValues, reset]);
 
   const fetchTags = useCallback(async () => {
     try {
@@ -71,18 +170,34 @@ export default function NoteEditorPage() {
     }
   }, []);
 
+  const applyNoteFromApi = useCallback(
+    (note: Note) => {
+      reset({
+        title: note.title,
+        content: note.content,
+      });
+      setIsPinned(!!note.is_pinned);
+      setIsFavorite(!!note.is_favorite);
+      setNoteTags(note.tags ?? []);
+      setNoteSource(note.source ?? 'web');
+      setVoiceAudioAvailable(!!note.voice_audio_available);
+      setStsAudioAvailable(!!note.sts_audio_available);
+      setVoiceStatus(note.voice_status ?? null);
+      setVoiceError(note.voice_error ?? null);
+      setTranscriptLanguage(note.transcript_language ?? null);
+      setTranslatedText(note.translated_text ?? null);
+      setVoiceDurationSeconds(
+        note.voice_duration_seconds != null ? note.voice_duration_seconds : null
+      );
+    },
+    [reset]
+  );
+
   useEffect(() => {
     const fetchNote = async () => {
       try {
         const response = await api.get<Note>(`/api/v1/notes/${noteId}`);
-        const note = response.data;
-        reset({
-          title: note.title,
-          content: note.content,
-        });
-        setIsPinned(!!note.is_pinned);
-        setIsFavorite(!!note.is_favorite);
-        setNoteTags(note.tags ?? []);
+        applyNoteFromApi(response.data);
       } catch (error) {
         console.error('Failed to fetch note:', error);
         router.push('/dashboard');
@@ -105,13 +220,49 @@ export default function NoteEditorPage() {
       fetchQuota();
       fetchTags();
     }
-  }, [noteId, reset, router, fetchTags]);
+  }, [noteId, router, fetchTags, applyNoteFromApi]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let origBlobUrl: string | null = null;
+    let stsBlobUrl: string | null = null;
+
+    setOriginalAudioUrl(null);
+    setStsAudioUrl(null);
+
+    (async () => {
+      try {
+        if (voiceAudioAvailable) {
+          const r = await api.get(`/api/v1/notes/${noteId}/audio`, { responseType: 'blob' });
+          if (!cancelled) {
+            origBlobUrl = URL.createObjectURL(r.data);
+            setOriginalAudioUrl(origBlobUrl);
+          }
+        }
+        if (stsAudioAvailable) {
+          const r2 = await api.get(`/api/v1/notes/${noteId}/audio/sts`, { responseType: 'blob' });
+          if (!cancelled) {
+            stsBlobUrl = URL.createObjectURL(r2.data);
+            setStsAudioUrl(stsBlobUrl);
+          }
+        }
+      } catch {
+        /* optional preview; ignore */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (origBlobUrl) URL.revokeObjectURL(origBlobUrl);
+      if (stsBlobUrl) URL.revokeObjectURL(stsBlobUrl);
+    };
+  }, [noteId, voiceAudioAvailable, stsAudioAvailable]);
 
   const attachTag = async (tagId: string) => {
     try {
       await api.post(`/api/v1/notes/${noteId}/tags/${tagId}`);
       const res = await api.get<Note>(`/api/v1/notes/${noteId}`);
-      setNoteTags(res.data.tags ?? []);
+      applyNoteFromApi(res.data);
       setTagDropdownOpen(false);
       window.dispatchEvent(new Event('dashboard:refresh-notes'));
     } catch {
@@ -122,7 +273,8 @@ export default function NoteEditorPage() {
   const detachTag = async (tagId: string) => {
     try {
       await api.delete(`/api/v1/notes/${noteId}/tags/${tagId}`);
-      setNoteTags((prev) => prev.filter((t) => t.id !== tagId));
+      const res = await api.get<Note>(`/api/v1/notes/${noteId}`);
+      applyNoteFromApi(res.data);
       window.dispatchEvent(new Event('dashboard:refresh-notes'));
     } catch {
       // ignore
@@ -135,9 +287,12 @@ export default function NoteEditorPage() {
     setIsSaving(true);
     try {
       await api.put(`/api/v1/notes/${noteId}`, data);
+      reset(data);
       window.dispatchEvent(new Event('dashboard:refresh-notes'));
+      toast.success('Saved');
     } catch (error) {
       console.error('Failed to save note:', error);
+      toast.error('Could not save note');
     } finally {
       setIsSaving(false);
     }
@@ -149,9 +304,11 @@ export default function NoteEditorPage() {
     try {
       await api.delete(`/api/v1/notes/${noteId}`);
       window.dispatchEvent(new Event('dashboard:refresh-notes'));
+      toast.success('Moved to trash');
       router.push('/dashboard');
     } catch (error) {
       console.error('Failed to delete note:', error);
+      toast.error('Could not delete note');
     }
   };
 
@@ -238,6 +395,33 @@ export default function NoteEditorPage() {
     }
   };
 
+  const handleDescribeVoiceMemo = async () => {
+    setQuotaError(null);
+    setVoiceDescription(null);
+    setAiLoading('describe');
+    try {
+      await handleSubmit(onSubmit)();
+      const response = await api.get<{ description: string }>(
+        `/api/v1/notes/${noteId}/describe`
+      );
+      setVoiceDescription(response.data.description ?? '');
+      const quotaRes = await api.get<QuotaResponse>('/api/v1/usage/quota');
+      setQuota(quotaRes.data);
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number; data?: { detail?: string } } })?.response?.status;
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      if (status === 429) {
+        setQuotaError(detail || 'Monthly AI credits used. You can still edit manually or try again next month.');
+        const quotaRes = await api.get<QuotaResponse>('/api/v1/usage/quota').catch(() => null);
+        if (quotaRes?.data) setQuota(quotaRes.data);
+      } else {
+        setQuotaError('Couldn\'t describe this memo. Save your note and try again.');
+      }
+    } finally {
+      setAiLoading(null);
+    }
+  };
+
   const handleGenerateEmbeddings = async () => {
     setQuotaError(null);
     setAiLoading('embeddings');
@@ -265,7 +449,125 @@ export default function NoteEditorPage() {
     }
   };
 
+  const voicePanelDisabled =
+    (quota != null && quota.remaining === 0) || !!voiceBusy || !!aiLoading;
+
+  const handleRetranscribe = async () => {
+    setQuotaError(null);
+    setVoiceBusy('retranscribe');
+    try {
+      const res = await api.post<Note>(`/api/v1/notes/${noteId}/retranscribe`);
+      applyNoteFromApi(res.data);
+      const quotaRes = await api.get<QuotaResponse>('/api/v1/usage/quota');
+      setQuota(quotaRes.data);
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number; data?: { detail?: string } } })?.response
+        ?.status;
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      if (status === 429) {
+        setQuotaError(detail || 'Monthly AI credits used.');
+      } else {
+        setQuotaError(typeof detail === 'string' ? detail : 'Re-transcription failed.');
+      }
+    } finally {
+      setVoiceBusy(null);
+    }
+  };
+
+  const handleTranslateNote = async () => {
+    const lang = translateLang.trim();
+    if (!lang) return;
+    setQuotaError(null);
+    setVoiceBusy('translate');
+    try {
+      const res = await api.post<Note>(`/api/v1/notes/${noteId}/translate`, {
+        target_language: lang,
+      });
+      applyNoteFromApi(res.data);
+      const quotaRes = await api.get<QuotaResponse>('/api/v1/usage/quota');
+      setQuota(quotaRes.data);
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number; data?: { detail?: string } } })?.response
+        ?.status;
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      if (status === 429) {
+        setQuotaError(detail || 'Monthly AI credits used.');
+      } else {
+        setQuotaError(typeof detail === 'string' ? detail : 'Translation failed.');
+      }
+    } finally {
+      setVoiceBusy(null);
+    }
+  };
+
+  const handleSpeechToSpeech = async () => {
+    setQuotaError(null);
+    setVoiceBusy('sts');
+    try {
+      const res = await api.post<Note>(`/api/v1/notes/${noteId}/speech-to-speech`, {});
+      applyNoteFromApi(res.data);
+      const quotaRes = await api.get<QuotaResponse>('/api/v1/usage/quota');
+      setQuota(quotaRes.data);
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number; data?: { detail?: string } } })?.response
+        ?.status;
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      if (status === 429) {
+        setQuotaError(detail || 'Monthly AI credits used.');
+      } else {
+        setQuotaError(typeof detail === 'string' ? detail : 'Speech-to-speech failed.');
+      }
+    } finally {
+      setVoiceBusy(null);
+    }
+  };
+
+  const playTts = async (source: 'content' | 'translated' | 'custom', text?: string | null) => {
+    setQuotaError(null);
+    setVoiceBusy('tts');
+    try {
+      const res = await api.post(`/api/v1/notes/${noteId}/tts`, { source, text: text ?? null }, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(res.data);
+      const el = ttsAudioRef.current;
+      if (el) {
+        if (el.src.startsWith('blob:')) {
+          URL.revokeObjectURL(el.src);
+        }
+        el.src = url;
+        await el.play();
+      } else {
+        URL.revokeObjectURL(url);
+      }
+      const quotaRes = await api.get<QuotaResponse>('/api/v1/usage/quota');
+      setQuota(quotaRes.data);
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number; data?: { detail?: string } } })?.response
+        ?.status;
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      if (status === 429) {
+        setQuotaError(detail || 'Monthly AI credits used.');
+      } else {
+        setQuotaError(typeof detail === 'string' ? detail : 'Text-to-speech failed.');
+      }
+    } finally {
+      setVoiceBusy(null);
+    }
+  };
+
   const aiDisabled = (quota != null && quota.remaining === 0) || !!aiLoading;
+  const showVoiceTab = noteSource === 'voice' || voiceAudioAvailable;
+  const voiceLayout = isVoiceMemo({
+    source: noteSource,
+    voice_audio_available: voiceAudioAvailable,
+  });
+  const voiceDurationLabel = formatVoiceDuration(voiceDurationSeconds);
+  const quotaTitle =
+    quota?.remaining === 0 ? 'Monthly AI credits used. You can still edit manually or try again next month.' : undefined;
 
   if (isLoading) {
     return (
@@ -276,41 +578,86 @@ export default function NoteEditorPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto w-full p-8">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <div className="h-full overflow-y-auto w-full p-6 sm:p-8">
+      <div className="max-w-5xl mx-auto space-y-5">
         {/* Toolbar */}
-        <div className="flex items-center justify-between sticky top-0 bg-card/90 backdrop-blur-sm py-4 z-10 -mx-4 px-4 rounded-b-md">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="hover:bg-muted" onClick={() => router.push('/dashboard')}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="text-xl font-semibold text-foreground">Edit Note</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={togglePin} title={isPinned ? 'Unpin' : 'Pin'}>
-            <Pin className={`h-4 w-4 mr-2 ${isPinned ? 'fill-current' : ''}`} />
-            {isPinned ? 'Pinned' : 'Pin'}
-          </Button>
-          <Button variant="outline" size="sm" onClick={toggleFavorite} title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}>
-            <Heart className={`h-4 w-4 mr-2 ${isFavorite ? 'fill-current text-red-500' : ''}`} />
-            {isFavorite ? 'Favorited' : 'Favorite'}
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleDelete} className="text-destructive hover:text-destructive hover:border-destructive">
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </Button>
-          <Button onClick={handleSubmit(onSubmit)} disabled={isSaving}>
-            {isSaving ? <Spinner size="sm" className="mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-            Save
-          </Button>
+        <div className="sticky top-0 z-10 -mx-2 px-2 py-3 rounded-xl bg-card/95 backdrop-blur-md border border-border/50 shadow-sm">
+          <div className="flex flex-wrap items-center gap-3 gap-y-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 hover:bg-muted"
+              onClick={() => router.push('/dashboard')}
+              title="Back to notes"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Input
+                {...register('title')}
+                className="text-2xl font-semibold border-none px-0 focus-visible:ring-0 bg-transparent placeholder:text-muted-foreground/40 text-foreground h-auto py-1 min-w-0"
+                placeholder="Untitled note"
+                aria-label="Note title"
+              />
+              {voiceLayout && (
+                <span
+                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-medium text-primary"
+                  title="This note has a voice memo"
+                >
+                  <Mic className="h-3.5 w-3.5" />
+                  Voice
+                </span>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={togglePin}
+                title={isPinned ? 'Unpin note' : 'Pin note'}
+                aria-pressed={isPinned}
+                className="text-foreground"
+              >
+                <Pin className={`h-4 w-4 ${isPinned ? 'fill-current text-primary' : ''}`} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleFavorite}
+                title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                aria-pressed={isFavorite}
+                className="text-foreground"
+              >
+                <Heart className={`h-4 w-4 ${isFavorite ? 'fill-current text-red-500' : ''}`} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleDelete}
+                title="Delete note"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <span className="hidden sm:inline text-xs text-muted-foreground tabular-nums min-w-[4.5rem] text-right" aria-live="polite">
+                {autoSaveState === 'saving' && 'Saving…'}
+                {autoSaveState === 'saved' && 'Saved'}
+                {autoSaveState === 'error' && 'Save failed'}
+              </span>
+              <Button onClick={handleSubmit(onSubmit)} disabled={isSaving} className="ml-1 gap-2 shadow-card">
+                {isSaving ? <Spinner size="sm" /> : <Save className="h-4 w-4" />}
+                Save
+              </Button>
+            </div>
+          </div>
         </div>
 
         {/* Tags */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 pl-1">
           {noteTags.map((t) => (
             <span
               key={t.id}
-              className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm font-medium ${getTagPillClass(t.id)}`}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm font-medium ${getTagPillClass(t.id)}`}
               style={getTagPillStyle(t.id)}
             >
               {t.name}
@@ -325,23 +672,20 @@ export default function NoteEditorPage() {
             </span>
           ))}
           <div className="relative">
-            <Button
-              variant="outline"
-              size="sm"
+            <button
+              type="button"
               onClick={() => setTagDropdownOpen((v) => !v)}
-              className="gap-2"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              title="Add tag"
+              aria-expanded={tagDropdownOpen}
+              aria-haspopup="listbox"
             >
-              <Tag className="h-4 w-4" />
-              Add tag
-            </Button>
+              <Plus className="h-4 w-4" />
+            </button>
             {tagDropdownOpen && (
               <>
-                <div
-                  className="fixed inset-0 z-10"
-                  aria-hidden
-                  onClick={() => setTagDropdownOpen(false)}
-                />
-                <div className="absolute left-0 top-full mt-1 z-20 min-w-[160px] rounded-lg border border-border bg-card py-1 shadow-md">
+                <div className="fixed inset-0 z-10" aria-hidden onClick={() => setTagDropdownOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 z-20 min-w-[180px] rounded-lg border border-border bg-card py-1 shadow-elevated">
                   {availableToAdd.length === 0 ? (
                     <p className="px-3 py-2 text-sm text-muted-foreground">No other tags</p>
                   ) : (
@@ -361,159 +705,439 @@ export default function NoteEditorPage() {
             )}
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Editor */}
-        <div className="lg:col-span-2 flex flex-col gap-4">
-          <Input
-            {...register('title')}
-            className="text-4xl font-bold border-none px-0 focus-visible:ring-0 bg-transparent placeholder:text-muted-foreground/40 text-foreground h-auto py-2"
-            placeholder="Note Title"
-          />
-          <KeywordRichEditor
-            value={watch('content') ?? ''}
-            onChangeText={(text) => setValue('content', text, { shouldDirty: true })}
-            onKeywordClick={setWikiKeyword}
-            placeholder="Start typing your thoughts..."
-            className="w-full flex-1 min-h-[500px] p-0 border-none bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none text-lg leading-relaxed keyword-editor"
-          />
-        </div>
-
-        {/* AI Sidebar + Wikipedia Preview */}
-        <div className="space-y-6">
-          <Card className="border-border bg-background shadow-none rounded-2xl">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg text-foreground">
-                <Sparkles className="h-5 w-5 text-primary" />
-                AI tools for this note
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {quotaError && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-sm text-amber-200">
-                  {quotaError}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 flex flex-col gap-5">
+            {voiceLayout && (
+              <section
+                className="rounded-2xl border border-border/70 bg-muted/35 p-5 shadow-card dark:bg-muted/25"
+                aria-labelledby="original-recording-heading"
+              >
+                <div className="flex flex-wrap items-end justify-between gap-4">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <h2
+                      id="original-recording-heading"
+                      className="text-sm font-semibold text-foreground flex items-center gap-2"
+                    >
+                      <Radio className="h-4 w-4 shrink-0 text-secondary" />
+                      Original recording
+                    </h2>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      The audio you captured. Your editable transcript is below.
+                    </p>
+                    {voiceDurationLabel ? (
+                      <p className="pt-1 font-mono text-sm tabular-nums text-muted-foreground">
+                        {voiceDurationLabel}
+                      </p>
+                    ) : null}
+                  </div>
+                  <VoiceMemoDetailWaveform className="shrink-0 opacity-90" />
                 </div>
+                {originalAudioUrl ? (
+                  <audio
+                    src={originalAudioUrl}
+                    controls
+                    className="mt-4 h-10 w-full max-w-lg"
+                  />
+                ) : voiceAudioAvailable ? (
+                  <p className="mt-4 text-sm text-muted-foreground">Loading audio…</p>
+                ) : (
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Recording will appear here once the file is available.
+                  </p>
+                )}
+              </section>
+            )}
+
+            <div
+              className={`flex flex-col gap-3 rounded-2xl border border-border/60 bg-card/40 p-6 shadow-card transition-shadow focus-within:shadow-card-hover focus-within:ring-2 focus-within:ring-ring/25 ${
+                voiceLayout ? 'border-border/70 bg-card/50' : ''
+              }`}
+            >
+              {voiceLayout ? (
+                <>
+                  <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-3">
+                    <h2 className="text-xs font-medium tracking-wide text-muted-foreground">
+                      Transcript
+                    </h2>
+                    <span className="text-[10px] text-muted-foreground/85">
+                      From speech-to-text — edit freely
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="h-px w-full bg-gradient-to-r from-transparent via-border to-transparent" aria-hidden />
               )}
+              <KeywordRichEditor
+                value={watch('content') ?? ''}
+                onChangeText={(text) => setValue('content', text, { shouldDirty: true })}
+                onKeywordClick={handleKeywordClick}
+                placeholder={
+                  voiceLayout
+                    ? 'Transcript appears here — edit like any note…'
+                    : 'Start typing your thoughts...'
+                }
+                className="w-full flex-1 min-h-[60vh] p-0 border-none bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none text-lg leading-relaxed keyword-editor"
+              />
+            </div>
+          </div>
 
-              {/* Primary: Find key topics */}
-              <section className="space-y-2" aria-label="Find key topics">
-                <p className="text-xs text-muted-foreground">Highlights important terms you can explore or turn into tags.</p>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="default"
-                    className="flex-1 justify-start font-medium"
-                    onClick={handleExtractKeywords}
-                    disabled={aiDisabled}
-                    title={quota?.remaining === 0 ? 'Monthly AI credits used. You can still edit manually or try again next month.' : undefined}
+          {/* Sidebar panel */}
+          <div className="flex flex-col min-h-0">
+            <audio ref={ttsAudioRef} className="sr-only" aria-hidden title="TTS playback" />
+
+            <div className="rounded-2xl border border-border/60 bg-card shadow-card overflow-hidden flex flex-col max-h-[min(85vh,900px)] lg:max-h-none lg:sticky lg:top-24">
+              <div
+                className="flex border-b border-border/60 bg-muted/30 px-1 pt-1 gap-0.5"
+                role="tablist"
+                aria-label="Note assistant"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={sidebarTab === 'insights'}
+                  data-active={sidebarTab === 'insights'}
+                  className="note-sidebar-tab flex-1 min-w-0 px-2 py-2.5 text-xs font-medium text-muted-foreground rounded-t-md hover:bg-muted/50 hover:text-foreground"
+                  onClick={() => setSidebarTab('insights')}
+                >
+                  <span className="flex items-center justify-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                    Insights
+                  </span>
+                </button>
+                {showVoiceTab && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={sidebarTab === 'voice'}
+                    data-active={sidebarTab === 'voice'}
+                    className="note-sidebar-tab flex-1 min-w-0 px-2 py-2.5 text-xs font-medium text-muted-foreground rounded-t-md hover:bg-muted/50 hover:text-foreground"
+                    onClick={() => setSidebarTab('voice')}
                   >
-                    {aiLoading === 'keywords' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                    Find key topics
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    onClick={() => toggleAiSection('keywords')}
-                    aria-label={aiSectionCollapsed.keywords ? 'Expand key topics' : 'Collapse key topics'}
+                    <span className="flex items-center justify-center gap-1.5">
+                      <Radio className="h-3.5 w-3.5 shrink-0" />
+                      Voice
+                    </span>
+                  </button>
+                )}
+                {wikiKeyword !== null && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={sidebarTab === 'lookup'}
+                    data-active={sidebarTab === 'lookup'}
+                    className="note-sidebar-tab flex-1 min-w-0 px-2 py-2.5 text-xs font-medium text-muted-foreground rounded-t-md hover:bg-muted/50 hover:text-foreground"
+                    onClick={() => setSidebarTab('lookup')}
                   >
-                    {aiSectionCollapsed.keywords ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </Button>
-                </div>
-                {!aiSectionCollapsed.keywords && keywords && (
-                  <div className="mt-3 space-y-2">
-                    <h4 className="text-sm font-semibold text-foreground">Top topics</h4>
-                    <p className="text-xs text-muted-foreground">Click a topic to preview or add it as a tag below.</p>
-                    <div className="flex flex-wrap gap-2">
-                      {keywords.map((keyword, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => setWikiKeyword(keyword)}
-                          className="px-2.5 py-1.5 bg-primary/20 text-primary text-xs font-medium rounded-full hover:bg-primary/30 transition-colors"
+                    <span className="flex items-center justify-center gap-1.5">
+                      <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                      Lookup
+                    </span>
+                  </button>
+                )}
+              </div>
+
+              <div className="p-4 overflow-y-auto flex-1 min-h-[280px] space-y-4">
+                {quotaError && (
+                  <div
+                    className="flex gap-2 rounded-lg border border-amber-600/25 bg-amber-500/[0.08] px-3 py-2.5 text-sm text-amber-950 dark:text-amber-100"
+                    role="alert"
+                  >
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-700 dark:text-amber-300" />
+                    <p className="leading-snug">{quotaError}</p>
+                  </div>
+                )}
+
+                {sidebarTab === 'insights' && (
+                  <div className="space-y-4" role="tabpanel">
+                    {/* Key topics */}
+                    <div className="rounded-xl border border-border/70 bg-background/80 p-3 shadow-sm space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                            <Wand2 className="h-4 w-4 text-primary shrink-0" />
+                            Key topics
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Surface terms to explore in Lookup or use as tags.
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="shrink-0"
+                          onClick={handleExtractKeywords}
+                          disabled={aiDisabled}
+                          title={quotaTitle}
                         >
-                          {keyword}
-                        </button>
-                      ))}
+                          {aiLoading === 'keywords' ? <Spinner size="sm" /> : 'Run'}
+                        </Button>
+                      </div>
+                      {keywords && (
+                        <div className="animate-fade-slide-in space-y-2 pt-1 border-t border-border/50">
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+                            Top topics
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {keywords.map((keyword, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={() => handleKeywordClick(keyword)}
+                                className="ai-topic-pill px-2.5 py-1.5 rounded-full text-xs font-medium bg-primary/15 text-primary border border-primary/20 hover:bg-primary/25"
+                              >
+                                {keyword}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Summary */}
+                    <div className="rounded-xl border border-border/70 bg-background/80 p-3 shadow-sm space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-primary shrink-0" />
+                            Summary
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            A short recap of your note.
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="shrink-0"
+                          onClick={handleSummarize}
+                          disabled={aiDisabled}
+                          title={quotaTitle}
+                        >
+                          {aiLoading === 'summary' ? <Spinner size="sm" /> : 'Run'}
+                        </Button>
+                      </div>
+                      {summary && (
+                        <blockquote className="animate-fade-slide-in mt-2 border-l-[3px] border-secondary pl-3 py-1 text-sm text-foreground leading-relaxed bg-accent/30 rounded-r-md">
+                          {summary}
+                        </blockquote>
+                      )}
+                    </div>
+
+                    {voiceLayout && (
+                      <div className="rounded-xl border border-border/70 bg-background/80 p-3 shadow-sm space-y-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                              <Mic className="h-4 w-4 text-primary shrink-0" />
+                              What was said
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              From transcript only — not raw audio.
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="shrink-0"
+                            onClick={handleDescribeVoiceMemo}
+                            disabled={aiDisabled}
+                            title={quotaTitle}
+                          >
+                            {aiLoading === 'describe' ? <Spinner size="sm" /> : 'Run'}
+                          </Button>
+                        </div>
+                        {voiceDescription && (
+                          <div className="animate-fade-slide-in mt-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                            {voiceDescription}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Embeddings */}
+                    <div className="rounded-xl border border-border/70 bg-background/80 p-3 shadow-sm space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                            <Wand2 className="h-4 w-4 text-primary shrink-0" />
+                            Semantic search
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Prepare vectors for related notes and search.
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="shrink-0"
+                          onClick={handleGenerateEmbeddings}
+                          disabled={aiDisabled}
+                          title={quotaTitle}
+                        >
+                          {aiLoading === 'embeddings' ? <Spinner size="sm" /> : 'Run'}
+                        </Button>
+                      </div>
+                      {embeddingsResult && (
+                        <div className="animate-fade-slide-in flex items-center gap-2 flex-wrap mt-2">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-secondary/12 text-foreground border border-secondary/30 px-2.5 py-1 text-xs font-medium">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-secondary shrink-0" />
+                            Ready · {embeddingsResult.dimension}d
+                            {embeddingsResult.cached ? ' · cached' : ''}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
-              </section>
 
-              {/* Secondary: Summary */}
-              <section className="space-y-2 pt-2 border-t border-border" aria-label="Summary">
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="secondary"
-                    className="flex-1 justify-start"
-                    onClick={handleSummarize}
-                    disabled={aiDisabled}
-                    title={quota?.remaining === 0 ? 'Monthly AI credits used. You can still edit manually or try again next month.' : undefined}
-                  >
-                    {aiLoading === 'summary' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                    Create quick summary
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    onClick={() => toggleAiSection('summary')}
-                    aria-label={aiSectionCollapsed.summary ? 'Expand summary' : 'Collapse summary'}
-                  >
-                    {aiSectionCollapsed.summary ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </Button>
-                </div>
-                {!aiSectionCollapsed.summary && summary && (
-                  <div className="p-3 bg-primary/10 border border-primary/20 rounded-md text-sm text-foreground mt-2">
-                    <h4 className="font-semibold mb-1">Summary</h4>
-                    {summary}
+                {sidebarTab === 'voice' && showVoiceTab && (
+                  <div className="space-y-5 text-sm" role="tabpanel">
+                    {voiceStatus && (
+                      <p className="text-xs text-muted-foreground">
+                        Status:{' '}
+                        <span className="font-medium text-foreground">{voiceStatus}</span>
+                        {transcriptLanguage ? <span className="ml-1">({transcriptLanguage})</span> : null}
+                      </p>
+                    )}
+                    {voiceError && (
+                      <div className="rounded-md bg-destructive/10 border border-destructive/20 text-xs text-destructive px-2 py-2">
+                        {voiceError}
+                      </div>
+                    )}
+
+                    <section className="space-y-2" aria-labelledby="voice-rec-label">
+                      <h3 id="voice-rec-label" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Recording
+                      </h3>
+                      {originalAudioUrl && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">Original</p>
+                          <audio src={originalAudioUrl} controls className="w-full h-9" />
+                        </div>
+                      )}
+                      {voiceAudioAvailable && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2"
+                          onClick={handleRetranscribe}
+                          disabled={voicePanelDisabled}
+                        >
+                          {voiceBusy === 'retranscribe' ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
+                          Re-transcribe
+                        </Button>
+                      )}
+                    </section>
+
+                    <section className="space-y-2 pt-2 border-t border-border/60" aria-labelledby="voice-trans-label">
+                      <h3 id="voice-trans-label" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                        <Languages className="h-3.5 w-3.5" />
+                        Translate
+                      </h3>
+                      <p className="text-[11px] text-muted-foreground">OpenRouter · transcript to another language</p>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Input
+                          value={translateLang}
+                          onChange={(e) => setTranslateLang(e.target.value)}
+                          placeholder="e.g. Spanish, Japanese"
+                          className="text-sm flex-1"
+                        />
+                        <Button
+                          size="sm"
+                          className="sm:w-auto w-full shrink-0"
+                          onClick={handleTranslateNote}
+                          disabled={voicePanelDisabled}
+                        >
+                          {voiceBusy === 'translate' ? <Spinner size="sm" /> : 'Translate'}
+                        </Button>
+                      </div>
+                      {translatedText ? (
+                        <div className="max-h-36 overflow-y-auto rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs whitespace-pre-wrap leading-relaxed">
+                          {translatedText}
+                        </div>
+                      ) : null}
+                    </section>
+
+                    <section className="space-y-2 pt-2 border-t border-border/60" aria-labelledby="voice-tts-label">
+                      <h3 id="voice-tts-label" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                        <Volume2 className="h-3.5 w-3.5" />
+                        Text to speech
+                      </h3>
+                      <p className="text-[11px] text-muted-foreground">ElevenLabs</p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1 min-w-[7rem]"
+                          onClick={() => playTts('content')}
+                          disabled={voicePanelDisabled}
+                        >
+                          {voiceBusy === 'tts' ? <Spinner size="sm" className="mr-1" /> : null}
+                          Note
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1 min-w-[7rem]"
+                          onClick={() => playTts('translated')}
+                          disabled={voicePanelDisabled || !translatedText}
+                        >
+                          Translation
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1 min-w-[7rem]"
+                          onClick={() => playTts('custom', summary)}
+                          disabled={voicePanelDisabled || !summary}
+                        >
+                          Summary
+                        </Button>
+                      </div>
+                    </section>
+
+                    {voiceAudioAvailable && (
+                      <section className="space-y-2 pt-2 border-t border-border/60" aria-labelledby="voice-sts-label">
+                        <h3 id="voice-sts-label" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Speech to speech
+                        </h3>
+                        <p className="text-[11px] text-muted-foreground">
+                          Transform your recording with the default ElevenLabs voice.
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2"
+                          onClick={handleSpeechToSpeech}
+                          disabled={voicePanelDisabled}
+                        >
+                          {voiceBusy === 'sts' ? <Spinner size="sm" /> : <Mic className="h-4 w-4" />}
+                          Run speech-to-speech
+                        </Button>
+                        {stsAudioUrl && (
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground">Transformed</p>
+                            <audio src={stsAudioUrl} controls className="w-full h-9" />
+                          </div>
+                        )}
+                      </section>
+                    )}
                   </div>
                 )}
-              </section>
 
-              {/* Tertiary: Semantic search */}
-              <section className="space-y-2 pt-2 border-t border-border" aria-label="Semantic search">
-                <p className="text-xs text-muted-foreground">Optimizes this note for related-note and vector search.</p>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="secondary"
-                    className="flex-1 justify-start"
-                    onClick={handleGenerateEmbeddings}
-                    disabled={aiDisabled}
-                    title={quota?.remaining === 0 ? 'Monthly AI credits used. You can still edit manually or try again next month.' : undefined}
-                  >
-                    {aiLoading === 'embeddings' ? <Spinner size="sm" className="mr-2" /> : <Wand2 className="h-4 w-4 mr-2" />}
-                    Prepare semantic search data
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    onClick={() => toggleAiSection('embeddings')}
-                    aria-label={aiSectionCollapsed.embeddings ? 'Expand embeddings' : 'Collapse embeddings'}
-                  >
-                    {aiSectionCollapsed.embeddings ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </Button>
-                </div>
-                {!aiSectionCollapsed.embeddings && embeddingsResult && (
-                  <div className="p-3 bg-muted rounded-md text-sm text-muted-foreground mt-2">
-                    Search data ready ({embeddingsResult.dimension} dimensions)
-                    {embeddingsResult.cached && ' (cached)'}
+                {sidebarTab === 'lookup' && wikiKeyword !== null && (
+                  <div role="tabpanel" className="min-h-[200px]">
+                    <WikipediaPreviewPanel
+                      keyword={wikiKeyword}
+                      onClose={() => setWikiKeyword(null)}
+                      className="max-h-[min(55vh,420px)] border-0 shadow-none rounded-xl"
+                    />
                   </div>
                 )}
-              </section>
-            </CardContent>
-          </Card>
-
-          {wikiKeyword !== null && (
-            <WikipediaPreviewPanel
-              keyword={wikiKeyword}
-              onClose={() => setWikiKeyword(null)}
-              className="max-h-[400px]"
-            />
-          )}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );

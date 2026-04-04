@@ -35,9 +35,74 @@
   --destructive: 220 53 69;
   --destructive-foreground: 255 255 255;
   --border: 214 201 182;
+  --divider: 228 218 200;
   --input: 214 201 182;
   --ring: 101 67 33;
   --hero-bg: rgb(var(--background));
+
+  /* Warm tinted shadows (used by Tailwind + components) */
+  --shadow-card: 0 1px 2px rgb(var(--primary) / 0.06),
+    0 4px 12px rgb(var(--primary) / 0.08);
+  --shadow-card-hover: 0 4px 8px rgb(var(--primary) / 0.1),
+    0 12px 28px rgb(var(--primary) / 0.12);
+  --shadow-elevated: 0 8px 24px rgb(var(--primary) / 0.14),
+    0 2px 8px rgb(var(--primary) / 0.08);
+}
+
+/* Dark theme (class on <html>, toggled by AppProviders) */
+.dark {
+  --foreground-rgb: 248 245 240;
+  --background-start-rgb: 28 25 22;
+  --background-end-rgb: 28 25 22;
+
+  --background: 28 25 22;
+  --foreground: 248 245 240;
+  --card: 36 32 28;
+  --card-foreground: 248 245 240;
+  --primary: 212 165 116;
+  --primary-foreground: 28 25 22;
+  --secondary: 100 145 118;
+  --secondary-foreground: 255 255 255;
+  --muted: 48 44 40;
+  --muted-foreground: 186 176 164;
+  --accent: 52 62 56;
+  --accent-foreground: 210 228 218;
+  --destructive: 232 96 96;
+  --destructive-foreground: 255 255 255;
+  --border: 58 54 48;
+  --divider: 50 46 42;
+  --input: 58 54 48;
+  --ring: 212 165 116;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.25), 0 4px 12px rgb(0 0 0 / 0.3);
+  --shadow-card-hover: 0 4px 8px rgb(0 0 0 / 0.3), 0 12px 28px rgb(0 0 0 / 0.35);
+  --shadow-elevated: 0 8px 24px rgb(0 0 0 / 0.4), 0 2px 8px rgb(0 0 0 / 0.25);
+}
+
+.dark body {
+  background-image: radial-gradient(
+    ellipse 120% 80% at 50% 0%,
+    rgb(42 38 34) 0%,
+    rgb(var(--background)) 45%,
+    rgb(22 20 18) 100%
+  );
+}
+
+.dark body::before {
+  opacity: 0.055;
+}
+
+/* Subtle paper grain (low-opacity noise) */
+body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 200px 200px;
 }
 
 /* Quran font stack and RTL rendering utilities */
@@ -54,8 +119,65 @@
 }
 
 body {
+  position: relative;
+  z-index: 0;
   color: rgb(var(--foreground));
-  background: rgb(var(--background));
+  background-color: rgb(var(--background));
+  background-image: radial-gradient(
+    ellipse 120% 80% at 50% 0%,
+    rgb(252 248 242) 0%,
+    rgb(var(--background)) 45%,
+    rgb(242 236 226) 100%
+  );
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+/* App shell: content above paper grain */
+.dashboard-shell {
+  position: relative;
+  z-index: 1;
+}
+
+/* Favorite heart pulse on note cards */
+@keyframes favorite-heart-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.92;
+  }
+}
+
+.animate-favorite-pulse {
+  animation: favorite-heart-pulse 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-favorite-pulse {
+    animation: none;
+  }
+
+  .animate-geometry-slow {
+    animation: none !important;
+  }
+}
+
+/* Decorative geometric accent (empty states) */
+@keyframes geometry-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-geometry-slow {
+  animation: geometry-rotate 48s linear infinite;
 }
 
 /* Editor container: force visible text so note content is never invisible */
@@ -128,4 +250,59 @@ body {
 .keyword-editor[data-placeholder]:empty::before {
   content: attr(data-placeholder);
   color: rgb(var(--muted-foreground) / 0.4);
+}
+
+/* Note editor: AI result reveal */
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-slide-in {
+  animation: fadeSlideIn 0.35s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-slide-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Sidebar tab underline indicator */
+.note-sidebar-tab {
+  position: relative;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+
+.note-sidebar-tab[data-active="true"] {
+  color: rgb(var(--primary));
+}
+
+.note-sidebar-tab[data-active="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  bottom: 0;
+  height: 2px;
+  border-radius: 9999px;
+  background: rgb(var(--primary));
+}
+
+/* Topic pills: soft glow on hover */
+.ai-topic-pill {
+  transition: box-shadow 0.2s ease, transform 0.15s ease, background-color 0.2s ease;
+}
+
+.ai-topic-pill:hover {
+  box-shadow: 0 0 0 1px rgb(var(--primary) / 0.25),
+    0 4px 14px rgb(var(--primary) / 0.12);
 }

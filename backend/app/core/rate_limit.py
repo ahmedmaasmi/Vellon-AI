@@ -16,6 +16,14 @@ from app.integrations.redis.cache import get_cache, increment_counter
 USAGE_AI_PREFIX = "usage:ai:"
 
 
+def normalize_plan(plan: str | None) -> str:
+    """Map stored plan to quota tier: free | pro | team."""
+    p = (plan or "free").strip().lower()
+    if p in ("pro", "team"):
+        return p
+    return "free"
+
+
 def _month_window() -> tuple[str, int, datetime]:
     """Return (YYYY-MM, ttl_seconds until end of month, period_end datetime)."""
     now = datetime.now(UTC)

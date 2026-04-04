@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -67,6 +67,24 @@ class Note(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         server_default=text("0"),
         default=0,
     )
+
+    # Voice memo: server-stored original audio + ElevenLabs pipeline metadata
+    voice_audio_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    voice_audio_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    voice_duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    voice_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    voice_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transcript_language: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    translated_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sts_audio_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    @property
+    def voice_audio_available(self) -> bool:
+        return bool(self.voice_audio_path)
+
+    @property
+    def sts_audio_available(self) -> bool:
+        return bool(self.sts_audio_path)
 
     __table_args__ = (
         Index("ix_notes_created_at", "created_at"),

@@ -143,7 +143,11 @@ class NoteRepository:
         if search_q and search_q.strip():
             q = f"%{search_q.strip()}%"
             criterion = criterion & (
-                or_(Note.title.ilike(q), Note.content.ilike(q))
+                or_(
+                    Note.title.ilike(q),
+                    Note.content.ilike(q),
+                    Note.translated_text.ilike(q),
+                )
             )
         stmt = (
             select(Note)
@@ -182,7 +186,25 @@ class NoteRepository:
             "deleted": deleted_result.scalar_one() or 0,
         }
 
-    _updatable_note_attrs = frozenset({"title", "content", "source", "is_archived", "is_favorite", "is_pinned", "sort_order"})
+    _updatable_note_attrs = frozenset(
+        {
+            "title",
+            "content",
+            "source",
+            "is_archived",
+            "is_favorite",
+            "is_pinned",
+            "sort_order",
+            "voice_audio_path",
+            "voice_audio_mime",
+            "voice_duration_seconds",
+            "voice_status",
+            "voice_error",
+            "transcript_language",
+            "translated_text",
+            "sts_audio_path",
+        }
+    )
 
     async def update_note(
         self,
@@ -225,6 +247,25 @@ class NoteRepository:
         await self._session.flush()
         await self._session.refresh(note)
         return note
+
+    async def restore_note(self, user_id: uuid.UUID, note_id: uuid.UUID) -> Note | None:
+        """Clear soft-delete flag. Returns None if not found or not in trash."""
+        note = await self.get_note_by_id(user_id, note_id, include_deleted=True)
+        if note is None or not note.is_deleted:
+            return None
+        note.is_deleted = False
+        await self._session.flush()
+        await self._session.refresh(note)
+        return note
+
+    async def hard_delete_note(self, user_id: uuid.UUID, note_id: uuid.UUID) -> bool:
+        """Permanently delete a soft-deleted note. Returns False if not in trash or missing."""
+        note = await self.get_note_by_id(user_id, note_id, include_deleted=True)
+        if note is None or not note.is_deleted:
+            return False
+        await self._session.delete(note)
+        await self._session.flush()
+        return True
 
     async def reorder_notes(
         self,

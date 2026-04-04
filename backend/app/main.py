@@ -9,10 +9,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api.router import api_router
 from app.core.config import settings
+from app.db.session import engine
 from app.integrations.redis.client import close_redis_client, create_redis_client, ping_redis
 from app.middlewares.rate_limit import RateLimitMiddleware
 
@@ -31,7 +31,7 @@ app = FastAPI(title="Backend API", version="0.1.0", lifespan=lifespan)
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -51,10 +51,8 @@ def health():
 async def ready(request: Request):
     """Readiness: DB and Redis are reachable. Returns 503 if either fails."""
     try:
-        engine = create_async_engine(settings.database_url)
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
-        await engine.dispose()
     except Exception:
         return JSONResponse(
             status_code=503,

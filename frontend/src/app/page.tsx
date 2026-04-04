@@ -1,10 +1,19 @@
 'use client';
 
 import React from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { motion, useReducedMotion } from 'framer-motion';
 import HeroSection from '@/components/HeroSection';
-import ProductProofSection from '@/components/ProductProofSection';
+
+const ProductProofSection = dynamic(() => import('@/components/ProductProofSection'), {
+  loading: () => (
+    <div
+      className="relative z-10 min-h-[20rem] max-w-6xl mx-auto my-12 rounded-3xl bg-muted/30 animate-pulse border border-border/40"
+      aria-hidden
+    />
+  ),
+});
 import { SectionReveal, StaggerReveal, StaggerRevealItem } from '@/components/SectionReveal';
 import { pathDrawVariants, viewportOnce } from '@/lib/motion';
 import { Button } from '@/components/ui/button';

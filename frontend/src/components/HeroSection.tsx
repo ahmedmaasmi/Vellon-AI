@@ -5,11 +5,14 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
-import { Search, Moon } from 'lucide-react';
+import { Search, Moon, Sun } from 'lucide-react';
+import { toast } from 'sonner';
 import CalendarBackground from './CalendarBackground';
+import { useAppTheme } from '@/components/providers/AppProviders';
 
 export default function HeroSection() {
   const { isAuthenticated, user } = useAuthStore();
+  const { resolved, toggleLightDark } = useAppTheme();
   
   return (
     <div className="relative min-h-screen bg-background text-foreground overflow-hidden font-sans">
@@ -103,10 +106,22 @@ export default function HeroSection() {
         <div className="flex items-center gap-4 text-muted-foreground">
           {!isAuthenticated && (
             <>
-              <button className="p-2 hover:bg-muted rounded-full transition-colors hidden sm:block" type="button" aria-label="Theme">
-                <Moon className="w-5 h-5" />
+              <button
+                className="p-2 hover:bg-muted rounded-full transition-colors hidden sm:block"
+                type="button"
+                aria-label={resolved === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                title="Toggle theme"
+                onClick={() => toggleLightDark()}
+              >
+                {resolved === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
-              <button className="p-2 hover:bg-muted rounded-full transition-colors" type="button" aria-label="Search">
+              <button
+                className="p-2 hover:bg-muted rounded-full transition-colors"
+                type="button"
+                aria-label="Site search"
+                title="Coming soon"
+                onClick={() => toast.message('Site search is coming soon', { description: 'Use search inside the app after you sign in.' })}
+              >
                 <Search className="w-5 h-5" />
               </button>
             </>
