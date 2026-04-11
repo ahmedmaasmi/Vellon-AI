@@ -5,10 +5,11 @@ Note ORM model. Notes belong to a user (single-user, no organizations).
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String, Text, text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -67,6 +68,21 @@ class Note(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         server_default=text("0"),
         default=0,
     )
+
+    # Google Keep–style fields
+    color: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    note_type: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        server_default=text("'text'"),
+        default="text",
+    )
+    checklist_items: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    reminder_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    images: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     # Voice memo: server-stored original audio + ElevenLabs pipeline metadata
     voice_audio_path: Mapped[str | None] = mapped_column(String(512), nullable=True)

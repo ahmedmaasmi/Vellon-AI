@@ -5,6 +5,8 @@ Notes routes: authenticated CRUD and AI features (summarize, keywords) for curre
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
@@ -19,6 +21,7 @@ from app.db.repositories import NoteRepository, TagRepository, UsageLogRepositor
 from app.db.session import get_db_session
 from app.core.config import settings
 from app.schemas.note import (
+    ChecklistItemInput,
     DescriptionResponse,
     EmbeddingsResponse,
     KeywordsResponse,
@@ -69,12 +72,19 @@ async def create_note(
     user: User = Depends(get_current_user),
 ) -> NoteResponse:
     repo = NoteRepository(session)
+    checklist_data: list[dict] | None = None
+    if body.checklist_items is not None:
+        checklist_data = [c.model_dump() for c in body.checklist_items]
     note = await repo.create_note(
         user_id=user.id,
         title=body.title,
         content=body.content,
         source=body.source,
         is_archived=body.is_archived,
+        color=body.color,
+        note_type=body.note_type,
+        checklist_items=checklist_data,
+        reminder_at=body.reminder_at,
     )
     note_with_tags = await repo.get_note_by_id_with_tags(user_id=user.id, note_id=note.id)
     assert note_with_tags is not None
@@ -250,6 +260,24 @@ async def reorder_notes(
     return {"status": "ok"}
 
 
+@router.get("/reminders/due", response_model=list[NoteResponse])
+async def list_due_reminders(
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+) -> list[NoteResponse]:
+    """Notes with reminder_at set and reminder_at <= now (UTC). Client may dedupe for toasts."""
+    repo = NoteRepository(session)
+    now = datetime.now(timezone.utc)
+    notes = await repo.list_notes(
+        user_id=user.id,
+        limit=limit,
+        offset=0,
+        reminder_due_before=now,
+    )
+    return [NoteResponse.model_validate(n) for n in notes]
+
+
 @router.get("/{note_id}", response_model=NoteResponse)
 async def get_note(note: Note = Depends(get_note_with_tags_or_404)) -> NoteResponse:
     return NoteResponse.model_validate(note)
@@ -291,6 +319,79 @@ async def get_note_original_audio(note: Note = Depends(get_note_or_404)) -> File
     )
 
 
+@router.get("/{note_id}/images/{image_id}")
+async def get_note_image_file(
+    note_id: uuid.UUID,
+    image_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+) -> Response:
+    repo = NoteRepository(session)
+    note = await repo.get_note_by_id(user_id=user.id, note_id=note_id, include_deleted=False)
+    if note is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    imgs = note.images or []
+    rel_path: str | None = None
+    for img in imgs:
+        if not isinstance(img, dict):
+            continue
+        if str(img.get("id")) == str(image_id):
+            rp = img.get("rel_path")
+            if isinstance(rp, str):
+                rel_path = rp
+            break
+    if rel_path is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+    try:
+        data, mime = media_storage.read_media_file(rel_path)
+    except (FileNotFoundError, ValueError, OSError):
+        raise HTTPException(status_code=404, detail="Image not found")
+    return Response(content=data, media_type=mime)
+
+
+@router.post("/{note_id}/images", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
+async def upload_note_image(
+    note_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+    file: UploadFile = File(...),
+) -> NoteResponse:
+    repo = NoteRepository(session)
+    note = await repo.get_note_by_id(user_id=user.id, note_id=note_id, include_deleted=False)
+    if note is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    raw = await file.read()
+    if len(raw) > settings.note_image_upload_max_bytes:
+        raise HTTPException(status_code=413, detail="Image file is too large")
+    name = file.filename or "image.jpg"
+    ext = Path(name).suffix.lstrip(".").lower() or "jpg"
+    new_img_id = uuid.uuid4()
+    try:
+        rel = media_storage.save_note_image(user.id, note_id, new_img_id, raw, extension=ext)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid image")
+    imgs = [dict(x) for x in (note.images or []) if isinstance(x, dict)]
+    imgs.append({"id": str(new_img_id), "rel_path": rel})
+    updated = await repo.update_note(user_id=user.id, note_id=note_id, images=imgs)
+    assert updated is not None
+    note_with_tags = await repo.get_note_by_id_with_tags(user_id=user.id, note_id=note_id)
+    assert note_with_tags is not None
+    return NoteResponse.model_validate(note_with_tags)
+
+
+@router.post("/{note_id}/copy", response_model=NoteResponse, status_code=status.HTTP_201_CREATED)
+async def copy_note_endpoint(
+    note_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    user: User = Depends(get_current_user),
+) -> NoteResponse:
+    repo = NoteRepository(session)
+    copied = await repo.copy_note(user_id=user.id, note_id=note_id)
+    if copied is None:
+        raise HTTPException(status_code=404, detail="Note not found")
+    return NoteResponse.model_validate(copied)
+
+
 @router.put("/{note_id}", response_model=NoteResponse)
 async def update_note(
     note_id: uuid.UUID,
@@ -301,6 +402,11 @@ async def update_note(
 ) -> NoteResponse:
     repo = NoteRepository(session)
     values = body.model_dump(exclude_unset=True)
+    if "checklist_items" in values and values["checklist_items"] is not None:
+        raw_items = values["checklist_items"]
+        values["checklist_items"] = [
+            ChecklistItemInput.model_validate(x).model_dump() for x in raw_items
+        ]
     note = await repo.update_note(
         user_id=user.id,
         note_id=note_id,
@@ -308,7 +414,12 @@ async def update_note(
     )
     if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
-    if "title" in values or "content" in values or "translated_text" in values:
+    if (
+        "title" in values
+        or "content" in values
+        or "translated_text" in values
+        or "checklist_items" in values
+    ):
         await delete_cached_summary(redis, note_id)
         await delete_cached_keywords(redis, note_id)
         await delete_cached_description(redis, note_id)

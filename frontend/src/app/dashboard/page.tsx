@@ -1,22 +1,30 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, type DragEvent } from 'react';
+import {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  type DragEvent,
+  type CSSProperties,
+} from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FileText, Search, Plus, Pin, Heart, Calendar, Mic, RotateCcw, Trash2 } from 'lucide-react';
+import { FileText, Search, Plus, LayoutGrid, List, RotateCcw, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api';
-import {
-  getColorForTag,
-  getNoteCardStylesForHex,
-  getTagPillClass,
-  getTagPillStyle,
-} from '@/lib/tag-colors';
+import { getColorForTag, getNoteCardStylesForHex } from '@/lib/tag-colors';
 import { useAuthStore } from '@/store/auth';
 import VoiceMemoRecorder from '@/components/VoiceMemoRecorder';
-import { formatVoiceDuration, isVoiceMemo } from '@/lib/note-kind';
+import QuickAddBar from '@/components/QuickAddBar';
+import NoteEditModal from '@/components/NoteEditModal';
+import { NoteBoardCard } from '@/components/NoteBoardCard';
+import { AuthenticatedNoteImage } from '@/components/AuthenticatedNoteImage';
 import type { NoteListItem } from '@/types/note';
 import { toast } from 'sonner';
+import { formatVoiceDuration, isVoiceMemo } from '@/lib/note-kind';
+import { getKeepCardClasses } from '@/lib/note-colors';
 
 type Note = NoteListItem;
 
@@ -28,42 +36,7 @@ interface NoteCounts {
   deleted: number;
 }
 
-const PASTEL_COLORS = [
-  'bg-gradient-to-br from-[#BEE3F8] to-[#90cdf4]/40',
-  'bg-gradient-to-br from-[#C6F6D5] to-[#9ae6b4]/40',
-  'bg-gradient-to-br from-[#E9D8FD] to-[#d6bcfa]/40',
-  'bg-gradient-to-br from-[#FEEBC8] to-[#fbd38d]/40',
-  'bg-gradient-to-br from-[#FED7D7] to-[#feb2b2]/40',
-  'bg-gradient-to-br from-[#E2E8F0] to-[#cbd5e0]/40',
-];
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08 },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20, scale: 0.95 },
-  show: {
-    opacity: 1,
-    y: 0,
-    scale: 1,
-    transition: { type: 'spring', stiffness: 320, damping: 26 },
-  },
-};
-
-const TAG_COLORS = [
-  'bg-blue-400',
-  'bg-green-400',
-  'bg-purple-400',
-  'bg-orange-400',
-  'bg-red-400',
-  'bg-gray-400',
-];
-
+const TAG_COLORS = ['bg-blue-400', 'bg-green-400', 'bg-purple-400', 'bg-orange-400', 'bg-red-400', 'bg-gray-400'];
 const OUTLINE_COLORS = [
   'border-blue-400',
   'border-green-400',
@@ -73,79 +46,86 @@ const OUTLINE_COLORS = [
   'border-gray-400',
 ];
 
-type NoteColorClasses = {
-  pastelClass: string;
-  tagColorClass: string;
-  outlineClass: string;
-  topBarClass: string;
-  pastelStyle?: { background: string };
-  tagColorStyle?: { backgroundColor: string };
-  outlineStyle?: { borderColor: string };
-  topBarStyle?: { backgroundColor: string };
+const VIEW_STORAGE_KEY = 'vellon-notes-view';
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.06 },
+  },
 };
 
-/** Subtle waveform inside cards — uses app secondary/primary tokens only */
-const VOICE_CARD_WAVE_BARS = [14, 22, 10, 28, 16, 24, 8, 26, 18, 30, 12, 20];
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { type: 'spring', stiffness: 320, damping: 26 },
+  },
+};
 
-function VoiceMemoCardWaveform() {
-  return (
-    <div className="flex h-9 items-end gap-px opacity-90" aria-hidden>
-      {VOICE_CARD_WAVE_BARS.map((h, i) => (
-        <span
-          key={i}
-          className="w-0.5 shrink-0 rounded-full bg-secondary/45 dark:bg-secondary/55"
-          style={{ height: `${h}px` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function DashboardNotesSkeleton() {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-fr">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div
-          key={i}
-          className="min-h-[280px] rounded-2xl border border-border/50 bg-muted/40 animate-pulse"
-          aria-hidden
-        />
-      ))}
-    </div>
-  );
-}
-
-function getNoteColorClasses(note: Note): NoteColorClasses {
-  const firstTag = note.tags?.[0];
-  const defaultIndex = PASTEL_COLORS.length - 1;
-  if (!firstTag) {
-    return {
-      pastelClass: PASTEL_COLORS[defaultIndex],
-      tagColorClass: TAG_COLORS[defaultIndex],
-      outlineClass: OUTLINE_COLORS[defaultIndex],
-      topBarClass: TAG_COLORS[defaultIndex],
+function useReminderPoll() {
+  const seen = useRef(new Set<string>());
+  useEffect(() => {
+    const tick = async () => {
+      try {
+        const r = await api.get<NoteListItem[]>('/api/v1/notes/reminders/due');
+        for (const n of r.data) {
+          if (seen.current.has(n.id)) continue;
+          seen.current.add(n.id);
+          toast.info(`Reminder: ${n.title?.trim() || 'Note'}`, {
+            description: (n.content || '').slice(0, 120) || undefined,
+          });
+        }
+      } catch {
+        /* offline / ignore */
+      }
     };
+    void tick();
+    const id = window.setInterval(tick, 45_000);
+    return () => window.clearInterval(id);
+  }, []);
+}
+
+function getDragOutlineClasses(note: Note): {
+  outlineClass: string;
+  outlineStyle?: CSSProperties;
+} {
+  const firstTag = note.tags?.[0];
+  const defaultIndex = OUTLINE_COLORS.length - 1;
+  if (!firstTag) {
+    return { outlineClass: OUTLINE_COLORS[defaultIndex] };
   }
   const resolved = getColorForTag(firstTag.id);
   if (resolved.type === 'palette') {
-    return {
-      pastelClass: PASTEL_COLORS[resolved.index],
-      tagColorClass: TAG_COLORS[resolved.index],
-      outlineClass: OUTLINE_COLORS[resolved.index],
-      topBarClass: TAG_COLORS[resolved.index],
-    };
+    return { outlineClass: OUTLINE_COLORS[resolved.index] };
   }
   const styles = getNoteCardStylesForHex(resolved.hex);
-  return {
-    pastelClass: '',
-    tagColorClass: '',
-    outlineClass: '',
-    topBarClass: '',
-    pastelStyle: styles.pastelStyle,
-    tagColorStyle: styles.tagColorStyle,
-    outlineStyle: styles.outlineStyle,
-    topBarStyle: { backgroundColor: resolved.hex },
-  };
+  return { outlineClass: '', outlineStyle: styles.outlineStyle };
+}
+
+function DashboardNotesSkeleton({ masonry }: { masonry: boolean }) {
+  if (masonry) {
+    return (
+      <div className="notes-masonry">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-40 rounded-2xl border border-border/50 bg-muted/40 animate-pulse"
+            aria-hidden
+          />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="h-16 rounded-xl border border-border/50 bg-muted/40 animate-pulse" aria-hidden />
+      ))}
+    </div>
+  );
 }
 
 function DashboardEmptyIllustration() {
@@ -191,9 +171,52 @@ function DashboardEmptyIllustration() {
   );
 }
 
-export default function DashboardEmptyState() {
+function NoteListRow({
+  note,
+  onOpen,
+}: {
+  note: NoteListItem;
+  onOpen: () => void;
+}) {
+  const voice = isVoiceMemo(note);
+  const { surface, bar } = note.color
+    ? getKeepCardClasses(note.color)
+    : { surface: 'bg-card/90 border border-border/70', bar: 'bg-muted-foreground/30' };
+  const firstImg = note.images?.[0];
+  const snippet =
+    note.note_type === 'checklist'
+      ? (note.checklist_items || []).filter((i) => i.text.trim()).length + ' items'
+      : (note.content || '').slice(0, 80);
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`flex w-full items-center gap-4 rounded-xl border p-3 text-left shadow-card transition hover:shadow-card-hover ${surface}`}
+    >
+      <div className={`h-1 w-1 shrink-0 rounded-full ${bar}`} aria-hidden />
+      {firstImg ? (
+        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border/50">
+          <AuthenticatedNoteImage noteId={note.id} imageId={firstImg.id} alt="" className="h-full w-full object-cover" />
+        </div>
+      ) : (
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">
+          {voice ? '🎙' : '📝'}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-semibold text-foreground">{note.title || 'Untitled Note'}</p>
+        <p className="truncate text-sm text-muted-foreground">{snippet}</p>
+      </div>
+      {note.is_pinned && <span className="text-xs text-secondary">Pinned</span>}
+    </button>
+  );
+}
+
+export default function DashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const modalNoteId = searchParams.get('note');
   const { user } = useAuthStore();
   const filter = searchParams.get('filter') ?? 'all';
   const tagId = searchParams.get('tag_id') ?? null;
@@ -205,6 +228,42 @@ export default function DashboardEmptyState() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [voiceMemoOpen, setVoiceMemoOpen] = useState(false);
   const [stats, setStats] = useState({ all: 0, favorite: 0 });
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  useReminderPoll();
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(VIEW_STORAGE_KEY);
+      if (v === 'list' || v === 'grid') setViewMode(v);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const setView = (v: 'grid' | 'list') => {
+    setViewMode(v);
+    try {
+      localStorage.setItem(VIEW_STORAGE_KEY, v);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const setModalNote = useCallback(
+    (id: string | null) => {
+      const p = new URLSearchParams(searchParams.toString());
+      if (id) p.set('note', id);
+      else p.delete('note');
+      const q = p.toString();
+      router.replace(q ? `/dashboard?${q}` : '/dashboard');
+    },
+    [router, searchParams]
+  );
+
+  const closeNoteModal = useCallback(() => {
+    setModalNote(null);
+  }, [setModalNote]);
 
   const firstName = useMemo(() => {
     const n = (user?.display_name ?? '').trim();
@@ -275,7 +334,7 @@ export default function DashboardEmptyState() {
         content: '',
       });
       window.dispatchEvent(new Event('dashboard:refresh-notes'));
-      router.push(`/dashboard/notes/${response.data.id}`);
+      setModalNote(response.data.id);
       toast.success('New note created');
     } catch (error) {
       console.error('Failed to create note:', error);
@@ -309,15 +368,15 @@ export default function DashboardEmptyState() {
     }
   };
 
-  const canReorder = filter === 'all' && !tagId && !searchForApi && notes.length > 1;
+  const canReorder = filter === 'all' && !tagId && !searchForApi && notes.length > 1 && viewMode === 'grid';
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [draggedColorClasses, setDraggedColorClasses] = useState<ReturnType<typeof getNoteColorClasses> | null>(null);
+  const [draggedOutline, setDraggedOutline] = useState<ReturnType<typeof getDragOutlineClasses> | null>(null);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     const note = notes[index];
     setDraggedIndex(index);
-    setDraggedColorClasses(getNoteColorClasses(note));
+    setDraggedOutline(getDragOutlineClasses(note));
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(index));
   };
@@ -330,7 +389,7 @@ export default function DashboardEmptyState() {
   const clearDragState = () => {
     setDraggedIndex(null);
     setDragOverIndex(null);
-    setDraggedColorClasses(null);
+    setDraggedOutline(null);
   };
   const handleDragEnd = () => clearDragState();
   const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
@@ -358,6 +417,8 @@ export default function DashboardEmptyState() {
   const listTitle =
     tagId ? 'Tag' : filter === 'all' ? 'All Notes' : filter === 'favorites' ? 'Favorites' : filter === 'archived' ? 'Archived' : 'Recently Deleted';
 
+  const masonry = viewMode === 'grid';
+
   if (isLoading) {
     return (
       <div className="flex-1 flex flex-col h-full w-full bg-transparent overflow-hidden">
@@ -370,7 +431,7 @@ export default function DashboardEmptyState() {
         <div className="flex-1 overflow-y-auto px-6 py-8 md:px-10 md:py-10">
           <div className="max-w-5xl mx-auto w-full">
             <div className="h-8 w-40 rounded-md bg-muted/50 animate-pulse mb-8" />
-            <DashboardNotesSkeleton />
+            <DashboardNotesSkeleton masonry={masonry} />
           </div>
         </div>
       </div>
@@ -379,6 +440,9 @@ export default function DashboardEmptyState() {
 
   return (
     <div className="flex-1 flex flex-col h-full w-full bg-transparent overflow-hidden">
+      {modalNoteId && (
+        <NoteEditModal noteId={modalNoteId} onClose={closeNoteModal} />
+      )}
       <header className="flex-shrink-0 border-b border-border/70 bg-card/35 backdrop-blur-md px-6 py-8 md:px-10 md:py-10 shadow-card">
         <div className="max-w-5xl mx-auto w-full space-y-6">
           <div className="space-y-1">
@@ -402,22 +466,50 @@ export default function DashboardEmptyState() {
               )}
             </p>
           </div>
-          <div
-            className={`relative max-w-2xl transition-transform duration-300 ease-out ${
-              searchFocused ? 'scale-[1.01] sm:scale-[1.02]' : ''
-            }`}
-          >
-            <Search className="pointer-events-none absolute left-4 top-1/2 z-[1] h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              placeholder="Search notes..."
-              className="h-12 w-full rounded-xl border border-border/80 bg-card/90 pl-12 pr-4 text-foreground shadow-search-inset placeholder:text-muted-foreground/70 transition-shadow duration-200 focus:border-secondary/40 focus:outline-none focus:ring-2 focus:ring-secondary/25"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-            />
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div
+              className={`relative flex-1 max-w-2xl transition-transform duration-300 ease-out ${
+                searchFocused ? 'scale-[1.01] sm:scale-[1.02]' : ''
+              }`}
+            >
+              <Search className="pointer-events-none absolute left-4 top-1/2 z-[1] h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                placeholder="Search notes..."
+                className="h-12 w-full rounded-xl border border-border/80 bg-card/90 pl-12 pr-4 text-foreground shadow-search-inset placeholder:text-muted-foreground/70 transition-shadow duration-200 focus:border-secondary/40 focus:outline-none focus:ring-2 focus:ring-secondary/25"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
+              />
+            </div>
+            <div className="flex items-center gap-1 rounded-xl border border-border/60 bg-muted/20 p-1">
+              <Button
+                type="button"
+                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                size="icon"
+                className="h-9 w-9"
+                title="Grid"
+                onClick={() => setView('grid')}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                size="icon"
+                className="h-9 w-9"
+                title="List"
+                onClick={() => setView('list')}
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
+          <QuickAddBar
+            onCreated={(id) => setModalNote(id)}
+            onOpenVoice={() => setVoiceMemoOpen(true)}
+          />
         </div>
       </header>
 
@@ -435,8 +527,7 @@ export default function DashboardEmptyState() {
                   className="h-10 gap-2 border-primary/35 bg-card/60 text-foreground shadow-card hover:bg-primary/8 hover:shadow-card-hover"
                   onClick={() => setVoiceMemoOpen(true)}
                 >
-                  <Mic className="h-4 w-4" />
-                  <span>Voice Memo</span>
+                  Voice Memo
                 </Button>
                 <Button
                   className="h-10 gap-2 bg-secondary text-secondary-foreground shadow-card hover:shadow-glow-secondary hover:brightness-[1.03]"
@@ -484,192 +575,51 @@ export default function DashboardEmptyState() {
                     onClick={() => setVoiceMemoOpen(true)}
                     className="gap-2 border-primary/35 bg-card/70 shadow-card hover:shadow-glow-secondary hover:border-secondary/40"
                   >
-                    <Mic className="h-4 w-4" />
                     Voice memo
                   </Button>
                 </div>
               )}
             </div>
+          ) : viewMode === 'list' ? (
+            <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-2">
+              {notes.map((note) => (
+                <motion.div key={note.id} variants={itemVariants}>
+                  <NoteListRow note={note} onOpen={() => setModalNote(note.id)} />
+                </motion.div>
+              ))}
+            </motion.div>
           ) : (
             <motion.div
               variants={containerVariants}
               initial="hidden"
               animate="show"
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 auto-rows-fr"
+              className="notes-masonry"
             >
               <AnimatePresence>
                 {notes.map((note, index) => {
-                  const voice = isVoiceMemo(note);
-                  const voiceDuration = formatVoiceDuration(note.voice_duration_seconds);
-                  const { pastelClass, pastelStyle, topBarClass, topBarStyle } = getNoteColorClasses(note);
-                  const date = new Date(note.created_at).toLocaleDateString('en-US', {
-                    day: 'numeric',
-                    month: 'long',
-                    year: 'numeric',
-                  });
                   const isDragging = draggedIndex === index;
                   const isDragOver = dragOverIndex === index;
-                  const pinnedWide = note.is_pinned;
-
                   return (
-                    <motion.div
-                      layout
-                      variants={itemVariants}
-                      whileHover={{ y: -6, scale: 1.02, zIndex: 10 }}
-                      whileTap={{ scale: 0.99 }}
-                      transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-                      key={note.id}
-                      draggable={canReorder}
-                      onDragStart={(e) => handleDragStart(e as unknown as DragEvent, index)}
-                      onDragOver={(e) => handleDragOver(e as unknown as DragEvent, index)}
-                      onDragLeave={handleDragLeave}
-                      onDragEnd={handleDragEnd}
-                      onDrop={(e) => handleDrop(e as unknown as DragEvent, index)}
-                      role="link"
-                      tabIndex={0}
-                      aria-label={`Open note: ${note.title || 'Untitled Note'}`}
-                      onClick={() => router.push(`/dashboard/notes/${note.id}`)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          router.push(`/dashboard/notes/${note.id}`);
-                        }
-                      }}
-                      className={`${pastelClass} relative flex min-h-[280px] cursor-pointer flex-col overflow-hidden rounded-2xl border border-black/[0.06] dark:border-border/60 p-7 pt-8 shadow-card transition-shadow duration-300 group hover:shadow-card-hover ${pinnedWide ? 'sm:col-span-2' : ''} ${note.is_pinned ? 'ring-1 ring-secondary/25 shadow-elevated' : ''} ${
-                        isDragging ? 'opacity-50' : ''
-                      } ${isDragOver && !draggedColorClasses ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
-                      style={pastelStyle}
-                    >
-                      <div
-                        className={`absolute left-0 right-0 top-0 z-[2] h-1 rounded-t-2xl ${topBarClass}`}
-                        style={topBarStyle}
-                        aria-hidden
-                      />
-
-                      {isDragOver && draggedColorClasses && (
-                        <div
-                          className={`pointer-events-none absolute inset-0 z-[3] min-h-[280px] rounded-2xl border-2 border-dashed ${draggedColorClasses.outlineClass} bg-transparent`}
-                          style={draggedColorClasses.outlineStyle}
-                          aria-hidden
-                        />
-                      )}
-
-                      {voice && (
-                        <div className="relative z-[1] mb-4 flex items-center gap-3 rounded-xl border border-border/70 bg-card/60 px-3 py-2.5 shadow-sm dark:bg-card/40">
-                          <VoiceMemoCardWaveform />
-                          <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
-                            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                              <Mic className="h-3.5 w-3.5 text-secondary" aria-hidden />
-                              Voice memo
-                            </span>
-                            {voiceDuration ? (
-                              <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                                {voiceDuration}
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="relative z-[1] mb-6 flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 text-[13px] font-semibold text-black/70 dark:text-white/70">
-                          <Calendar className="h-4 w-4 shrink-0 opacity-80" />
-                          <span>{date}</span>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1">
-                          {note.is_pinned && (
-                            <span
-                              className="rounded-full bg-secondary/15 p-1.5 text-secondary shadow-sm ring-1 ring-secondary/20"
-                              title="Pinned"
-                            >
-                              <Pin className="h-4 w-4" />
-                            </span>
-                          )}
-                          {note.is_favorite && (
-                            <span
-                              className="rounded-full bg-rose-500/10 p-1.5 text-rose-700 shadow-sm"
-                              title="Favorite"
-                            >
-                              <Heart className="h-4 w-4 fill-rose-600 text-rose-600 animate-favorite-pulse" />
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="relative z-[1] flex flex-1 flex-col space-y-3">
-                        <h3 className="text-xl font-bold leading-tight text-black/90 dark:text-white/90">
-                          {note.title || 'Untitled Note'}
-                        </h3>
-                        {voice ? (
-                          <div className="space-y-1.5">
-                            <p className="text-[11px] font-medium tracking-wide text-black/45 dark:text-white/50">
-                              Transcript
-                            </p>
-                            <p className="line-clamp-4 text-[15px] leading-relaxed text-black/75 dark:text-white/75">
-                              {note.content ||
-                                'No transcript yet — open the memo to record or wait for processing.'}
-                            </p>
-                          </div>
-                        ) : (
-                          <p className="line-clamp-6 text-[15px] leading-relaxed text-black/75 dark:text-white/75">
-                            {note.content ||
-                              'No preview yet — open the note to add your thoughts.'}
-                          </p>
-                        )}
-                      </div>
-
-                      {note.tags && note.tags.length > 0 && (
-                        <div className="relative z-[1] mt-5 flex flex-wrap gap-1.5">
-                          {note.tags.slice(0, 3).map((t) => (
-                            <span
-                              key={t.id}
-                              className={`inline-flex max-w-[7rem] truncate rounded-full px-2 py-0.5 text-[11px] font-medium ${getTagPillClass(t.id)}`}
-                              style={getTagPillStyle(t.id)}
-                              title={t.name}
-                            >
-                              {t.name}
-                            </span>
-                          ))}
-                          {note.tags.length > 3 && (
-                            <span className="rounded-full bg-black/5 px-2 py-0.5 text-[11px] text-black/50">
-                              +{note.tags.length - 3}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {filter === 'deleted' && (
-                        <div
-                          className="relative z-[2] mt-4 flex flex-wrap gap-2"
-                          onClick={(e) => e.stopPropagation()}
-                          onKeyDown={(e) => e.stopPropagation()}
-                        >
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            className="gap-1.5"
-                            onClick={(e) => restoreNote(e, note.id)}
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                            Restore
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="destructive"
-                            className="gap-1.5"
-                            onClick={(e) => permanentDeleteNote(e, note.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Delete forever
-                          </Button>
-                        </div>
-                      )}
-
-                      <div
-                        className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-b from-white/[0.12] to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                        aria-hidden
+                    <motion.div key={note.id} variants={itemVariants} layout>
+                      <NoteBoardCard
+                        note={note}
+                        filter={filter}
+                        canReorder={canReorder}
+                        isDragging={isDragging}
+                        isDragOver={isDragOver}
+                        draggedOutlineClass={draggedOutline?.outlineClass}
+                        draggedOutlineStyle={draggedOutline?.outlineStyle}
+                        onOpen={() => setModalNote(note.id)}
+                        onRefresh={fetchNotes}
+                        onRestore={filter === 'deleted' ? restoreNote : undefined}
+                        onPermanentDelete={filter === 'deleted' ? permanentDeleteNote : undefined}
+                        dragHandlers={{
+                          onDragStart: (e) => handleDragStart(e as unknown as DragEvent, index),
+                          onDragOver: (e) => handleDragOver(e as unknown as DragEvent, index),
+                          onDragLeave: handleDragLeave,
+                          onDragEnd: handleDragEnd,
+                          onDrop: (e) => handleDrop(e as unknown as DragEvent, index),
+                        }}
                       />
                     </motion.div>
                   );

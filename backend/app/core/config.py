@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     elevenlabs_sts_model: str = "eleven_multilingual_sts_v2"
     # Max upload size for voice memo original audio (bytes)
     voice_upload_max_bytes: int = 25 * 1024 * 1024
+    # Max upload size for note image attachments (bytes)
+    note_image_upload_max_bytes: int = 10 * 1024 * 1024
 
     # Rate limits per plan (AI actions per month)
     rate_limit_ai_free: int = 50

@@ -51,10 +51,12 @@ cd frontend
 npm install && npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Set `NEXT_PUBLIC_API_URL` in `.env` if the API is not at `http://localhost:8000`.
+Open [http://localhost:3000](http://localhost:3000).
+
+**API URL for local Next.js:** `next dev` reads env files from **`frontend/`** only (e.g. [`frontend/.env.local`](frontend/.env.local), [`frontend/.env.example`](frontend/.env.example)). A `NEXT_PUBLIC_API_URL` in the **repo root** `.env` is **not** applied to the browser bundle unless you copy it into `frontend/.env.local`. Match the port to your API (Docker default maps the API to host port **8000**; if you set `API_PORT=8001` in root `.env`, use `http://localhost:8001` here).
 
 ## Environment
 
-- **Root / frontend:** `NEXT_PUBLIC_API_URL` (API base URL). See [.env.example](.env.example).
+- **Frontend (local dev):** `NEXT_PUBLIC_API_URL` in `frontend/.env.local` or `frontend/.env` — must match the running API. Root [.env.example](.env.example) is for Docker Compose / backend; copy the URL into `frontend/` when running `npm run dev`.
 - **Backend:** `SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`; optional `OPENROUTER_API_KEY` for AI (summarize/keywords/embeddings). See [backend/.env.example](backend/.env.example).
 

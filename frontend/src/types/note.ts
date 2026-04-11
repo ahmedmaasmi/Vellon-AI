@@ -5,6 +5,17 @@ export interface NoteTagRef {
   name: string;
 }
 
+export interface NoteImageMeta {
+  id: string;
+  rel_path: string;
+}
+
+export interface ChecklistItemState {
+  text: string;
+  checked: boolean;
+  order: number;
+}
+
 export interface NoteListItem {
   id: string;
   title: string;
@@ -18,4 +29,9 @@ export interface NoteListItem {
   is_favorite: boolean;
   is_pinned: boolean;
   tags?: NoteTagRef[];
+  color?: string | null;
+  note_type?: string;
+  checklist_items?: ChecklistItemState[] | null;
+  reminder_at?: string | null;
+  images?: NoteImageMeta[] | null;
 }

@@ -5,18 +5,39 @@ Note API schemas: create input and response DTOs for the service layer.
 from datetime import datetime
 from uuid import UUID
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+
+class ChecklistItemInput(BaseModel):
+    """Single checklist row."""
+
+    text: str = Field(..., max_length=2000)
+    checked: bool = False
+    order: int = Field(0, ge=0, le=1_000_000)
+
+
+class NoteImageMeta(BaseModel):
+    """Image attachment metadata returned to clients (no raw server paths in new uploads)."""
+
+    id: UUID
+    rel_path: str = Field(..., description="Relative path under media root; fetch via GET .../images/{id}")
+
+    model_config = {"from_attributes": False}
 
 
 class NoteCreateInput(BaseModel):
     """Input for creating a note. user_id is set from current_user in the route."""
 
-    content: str = Field(...)
+    content: str = Field(default="", max_length=500_000)
     title: str | None = Field(None, max_length=255)
     source: str = Field("web", max_length=64)
     is_archived: bool = False
+    color: str | None = Field(None, max_length=32)
+    note_type: Literal["text", "checklist"] = "text"
+    checklist_items: list[ChecklistItemInput] | None = None
+    reminder_at: datetime | None = None
 
 
 class NoteUpdateInput(BaseModel):
@@ -28,6 +49,10 @@ class NoteUpdateInput(BaseModel):
     is_archived: bool | None = None
     is_favorite: bool | None = None
     is_pinned: bool | None = None
+    color: str | None = Field(None, max_length=32)
+    note_type: Literal["text", "checklist"] | None = None
+    checklist_items: list[ChecklistItemInput] | None = None
+    reminder_at: datetime | None = None
 
 
 class TagRefResponse(BaseModel):
@@ -51,6 +76,11 @@ class NoteResponse(BaseModel):
     is_favorite: bool
     is_pinned: bool
     sort_order: int
+    color: str | None = None
+    note_type: str = "text"
+    checklist_items: list[dict[str, Any]] | None = None
+    reminder_at: datetime | None = None
+    images: list[dict[str, Any]] | None = None
     created_at: datetime
     updated_at: datetime
     tags: list[TagRefResponse] = []

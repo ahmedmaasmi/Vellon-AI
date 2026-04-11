@@ -62,6 +62,27 @@ def delete_note_media_dir(user_id: uuid.UUID, note_id: uuid.UUID) -> None:
         shutil.rmtree(d, ignore_errors=True)
 
 
+_NOTE_IMAGE_EXTENSIONS = frozenset({"jpg", "jpeg", "png", "gif", "webp"})
+
+
+def save_note_image(
+    user_id: uuid.UUID,
+    note_id: uuid.UUID,
+    image_id: uuid.UUID,
+    data: bytes,
+    *,
+    extension: str = "jpg",
+) -> str:
+    """Write a note image; return relative path under media_root."""
+    ext = (extension.lstrip(".") or "jpg").lower()
+    if ext not in _NOTE_IMAGE_EXTENSIONS:
+        ext = "jpg"
+    d = ensure_note_media_dir(user_id, note_id)
+    path = d / f"{image_id}.{ext}"
+    path.write_bytes(data)
+    return f"{user_id}/{note_id}/{image_id}.{ext}"
+
+
 def read_media_file(relative_path: str) -> tuple[bytes, str]:
     path = abs_media_path(relative_path)
     if not path.is_file():
@@ -71,4 +92,12 @@ def read_media_file(relative_path: str) -> tuple[bytes, str]:
         mime = "audio/webm"
     elif path.suffix.lower() == ".mp3":
         mime = "audio/mpeg"
+    elif path.suffix.lower() in (".jpg", ".jpeg"):
+        mime = "image/jpeg"
+    elif path.suffix.lower() == ".png":
+        mime = "image/png"
+    elif path.suffix.lower() == ".gif":
+        mime = "image/gif"
+    elif path.suffix.lower() == ".webp":
+        mime = "image/webp"
     return path.read_bytes(), mime

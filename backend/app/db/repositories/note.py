@@ -4,10 +4,13 @@ Note repository: data access for notes. All queries are scoped by user_id.
 
 from __future__ import annotations
 
+import copy
 import uuid
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -29,6 +32,11 @@ class NoteRepository:
         title: str | None = None,
         source: str = "web",
         is_archived: bool = False,
+        color: str | None = None,
+        note_type: str = "text",
+        checklist_items: list[dict[str, Any]] | None = None,
+        reminder_at: datetime | None = None,
+        images: list[dict[str, Any]] | None = None,
     ) -> Note:
         """Create and persist a note. sort_order set to max+1. Caller must commit session."""
         subq = select(func.coalesce(func.max(Note.sort_order), -1)).where(Note.user_id == user_id, Note.is_deleted.is_(False))
@@ -41,6 +49,11 @@ class NoteRepository:
             source=source,
             is_archived=is_archived,
             sort_order=next_order,
+            color=color,
+            note_type=note_type,
+            checklist_items=checklist_items,
+            reminder_at=reminder_at,
+            images=images,
         )
         self._session.add(note)
         await self._session.flush()
@@ -127,6 +140,7 @@ class NoteRepository:
         pinned_only: bool | None = None,
         search_q: str | None = None,
         tag_id: uuid.UUID | None = None,
+        reminder_due_before: datetime | None = None,
     ) -> list[Note]:
         """List notes for the user, ordered by sort_order asc then updated_at desc.
         Excludes soft-deleted by default unless deleted_only=True.
@@ -149,6 +163,8 @@ class NoteRepository:
                     Note.translated_text.ilike(q),
                 )
             )
+        if reminder_due_before is not None:
+            criterion = criterion & Note.reminder_at.is_not(None) & (Note.reminder_at <= reminder_due_before)
         stmt = (
             select(Note)
             .where(criterion)
@@ -195,6 +211,11 @@ class NoteRepository:
             "is_favorite",
             "is_pinned",
             "sort_order",
+            "color",
+            "note_type",
+            "checklist_items",
+            "reminder_at",
+            "images",
             "voice_audio_path",
             "voice_audio_mime",
             "voice_duration_seconds",
@@ -266,6 +287,65 @@ class NoteRepository:
         await self._session.delete(note)
         await self._session.flush()
         return True
+
+    async def copy_note(self, user_id: uuid.UUID, note_id: uuid.UUID) -> Note | None:
+        """Duplicate a note (metadata, tags, checklist, images). Voice audio not copied."""
+        src = await self.get_note_by_id_with_tags(user_id, note_id, include_deleted=False)
+        if src is None:
+            return None
+        subq = select(func.coalesce(func.max(Note.sort_order), -1)).where(Note.user_id == user_id, Note.is_deleted.is_(False))
+        result = await self._session.execute(subq)
+        next_order = (result.scalar_one() or 0) + 1
+        base_title = (src.title or "Untitled Note").strip() or "Untitled Note"
+        suffix = " (Copy)"
+        new_title = base_title + suffix if len(base_title) + len(suffix) <= 255 else base_title[: 255 - len(suffix)] + suffix
+        checklist_copy = copy.deepcopy(src.checklist_items) if src.checklist_items else None
+        new_note = Note(
+            user_id=user_id,
+            title=new_title,
+            content=src.content,
+            source=src.source,
+            is_archived=False,
+            is_deleted=False,
+            is_favorite=False,
+            is_pinned=False,
+            sort_order=next_order,
+            color=src.color,
+            note_type=src.note_type or "text",
+            checklist_items=checklist_copy,
+            reminder_at=None,
+            images=None,
+        )
+        self._session.add(new_note)
+        await self._session.flush()
+        await self._session.refresh(new_note)
+        for tag in src.tags:
+            await self._session.execute(
+                insert(note_tags).values(note_id=new_note.id, tag_id=tag.id)
+            )
+        if src.images:
+            from app.services import media_storage  # lazy to avoid circular import
+
+            new_imgs: list[dict[str, Any]] = []
+            for img in src.images:
+                if not isinstance(img, dict):
+                    continue
+                old_rel = img.get("rel_path")
+                if not old_rel or not isinstance(old_rel, str):
+                    continue
+                try:
+                    data, _ = media_storage.read_media_file(old_rel)
+                except (FileNotFoundError, ValueError, OSError):
+                    continue
+                new_img_id = uuid.uuid4()
+                ext = Path(old_rel).suffix.lstrip(".").lower() or "jpg"
+                new_rel = media_storage.save_note_image(user_id, new_note.id, new_img_id, data, extension=ext)
+                new_imgs.append({"id": str(new_img_id), "rel_path": new_rel})
+            if new_imgs:
+                new_note.images = new_imgs
+        await self._session.flush()
+        await self._session.refresh(new_note)
+        return await self.get_note_by_id_with_tags(user_id, new_note.id, include_deleted=False)
 
     async def reorder_notes(
         self,

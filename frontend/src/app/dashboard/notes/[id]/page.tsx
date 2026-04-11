@@ -24,15 +24,29 @@ import {
   AlertCircle,
   Plus,
   CheckCircle2,
+  Bell,
+  ImagePlus,
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import KeywordRichEditor from '@/components/KeywordRichEditor';
 import WikipediaPreviewPanel from '@/components/WikipediaPreviewPanel';
+import ChecklistEditor from '@/components/ChecklistEditor';
+import { AuthenticatedNoteImage } from '@/components/AuthenticatedNoteImage';
 import { getTagPillClass, getTagPillStyle } from '@/lib/tag-colors';
+import { NOTE_COLOR_OPTIONS, noteColorSwatchTw, resolveNoteColorKey, type NoteColorId } from '@/lib/note-colors';
 import { formatVoiceDuration, isVoiceMemo } from '@/lib/note-kind';
+import type { ChecklistItemState, NoteImageMeta } from '@/types/note';
 
 const DETAIL_WAVE_BARS = [16, 26, 12, 32, 18, 28, 10, 30, 20, 34, 14, 24];
+
+function noteFetchErrorMessage(error: unknown): string {
+  const err = error as { code?: string; message?: string };
+  if (err.code === 'ERR_NETWORK' || err.message === 'Network Error') {
+    return "Couldn't connect to the server. Make sure the backend is running and that frontend/.env.local has NEXT_PUBLIC_API_URL pointing at the API port, then try again.";
+  }
+  return 'Something went wrong loading this note. Try again.';
+}
 
 function VoiceMemoDetailWaveform({ className }: { className?: string }) {
   return (
@@ -69,6 +83,11 @@ interface Note {
   translated_text?: string | null;
   voice_duration_seconds?: number | null;
   sts_audio_available?: boolean;
+  color?: string | null;
+  note_type?: string;
+  checklist_items?: ChecklistItemState[] | null;
+  reminder_at?: string | null;
+  images?: NoteImageMeta[] | null;
 }
 
 interface NoteFormValues {
@@ -83,6 +102,8 @@ export default function NoteEditorPage() {
   const router = useRouter();
   const noteId = params.id as string;
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState<'summary' | 'keywords' | 'embeddings' | 'describe' | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -109,6 +130,14 @@ export default function NoteEditorPage() {
   const [translateLang, setTranslateLang] = useState('Spanish');
   const [voiceBusy, setVoiceBusy] = useState<string | null>(null);
   const [voiceDurationSeconds, setVoiceDurationSeconds] = useState<number | null>(null);
+  const [noteType, setNoteType] = useState<'text' | 'checklist'>('text');
+  const [checklistItems, setChecklistItems] = useState<ChecklistItemState[]>([
+    { text: '', checked: false, order: 0 },
+  ]);
+  const [noteImages, setNoteImages] = useState<NoteImageMeta[]>([]);
+  const [noteColor, setNoteColor] = useState<string | null>(null);
+  const [reminderInput, setReminderInput] = useState('');
+  const skipChecklistSaveRef = useRef(true);
 
   const { register, handleSubmit, reset, watch, setValue, getValues, formState } = useForm<NoteFormValues>();
   const [autoSaveState, setAutoSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -143,6 +172,7 @@ export default function NoteEditorPage() {
 
   useEffect(() => {
     if (!noteId || isLoading) return;
+    if (noteType === 'checklist') return;
     if (!formState.isDirty) return;
     const timer = window.setTimeout(async () => {
       setAutoSaveState('saving');
@@ -159,7 +189,39 @@ export default function NoteEditorPage() {
       }
     }, 2000);
     return () => window.clearTimeout(timer);
-  }, [watchedTitle, watchedContent, formState.isDirty, noteId, isLoading, getValues, reset]);
+  }, [watchedTitle, watchedContent, formState.isDirty, noteId, isLoading, getValues, reset, noteType]);
+
+  useEffect(() => {
+    if (!noteId || isLoading || noteType !== 'checklist') return;
+    if (skipChecklistSaveRef.current) {
+      skipChecklistSaveRef.current = false;
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      setAutoSaveState('saving');
+      try {
+        const items = checklistItems
+          .filter((i) => i.text.trim())
+          .map((i, order) => ({
+            text: i.text.trim(),
+            checked: i.checked,
+            order,
+          }));
+        await api.put(`/api/v1/notes/${noteId}`, {
+          title: getValues('title'),
+          content: '',
+          checklist_items: items,
+        });
+        setAutoSaveState('saved');
+        window.dispatchEvent(new Event('dashboard:refresh-notes'));
+        window.setTimeout(() => setAutoSaveState('idle'), 1600);
+      } catch {
+        setAutoSaveState('error');
+        toast.error('Auto-save failed');
+      }
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [checklistItems, noteId, isLoading, noteType, getValues]);
 
   const fetchTags = useCallback(async () => {
     try {
@@ -189,38 +251,105 @@ export default function NoteEditorPage() {
       setVoiceDurationSeconds(
         note.voice_duration_seconds != null ? note.voice_duration_seconds : null
       );
+      setNoteType(note.note_type === 'checklist' ? 'checklist' : 'text');
+      setChecklistItems(
+        note.checklist_items?.length
+          ? note.checklist_items.map((it, i) => ({
+              text: it.text,
+              checked: it.checked,
+              order: it.order ?? i,
+            }))
+          : [{ text: '', checked: false, order: 0 }]
+      );
+      setNoteImages(note.images ?? []);
+      setNoteColor(note.color ?? null);
+      setReminderInput(note.reminder_at ? new Date(note.reminder_at).toISOString().slice(0, 16) : '');
+      skipChecklistSaveRef.current = true;
     },
     [reset]
   );
 
+  const patchKeepField = async (patch: Record<string, unknown>) => {
+    try {
+      await api.put(`/api/v1/notes/${noteId}`, patch);
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
+    } catch {
+      toast.error('Could not update note');
+    }
+  };
+
+  const setKeepColor = (c: NoteColorId) => {
+    const v = c === 'default' ? null : c;
+    setNoteColor(v);
+    void patchKeepField({ color: v });
+  };
+
+  const onReminderInputChange = (v: string) => {
+    setReminderInput(v);
+    if (!v) {
+      void patchKeepField({ reminder_at: null });
+      return;
+    }
+    void patchKeepField({ reminder_at: new Date(v).toISOString() });
+  };
+
+  const uploadDetailImage = async (file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const r = await api.post<Note>(`/api/v1/notes/${noteId}/images`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setNoteImages(r.data.images ?? []);
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
+      toast.success('Image added');
+    } catch {
+      toast.error('Upload failed');
+    }
+  };
+
   useEffect(() => {
+    if (!noteId) return;
+
+    setIsLoading(true);
+    setLoadError(null);
+    let cancelled = false;
+
     const fetchNote = async () => {
       try {
         const response = await api.get<Note>(`/api/v1/notes/${noteId}`);
-        applyNoteFromApi(response.data);
+        if (!cancelled) {
+          applyNoteFromApi(response.data);
+        }
       } catch (error) {
         console.error('Failed to fetch note:', error);
-        router.push('/dashboard');
+        if (!cancelled) {
+          setLoadError(noteFetchErrorMessage(error));
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
     const fetchQuota = async () => {
       try {
         const res = await api.get<QuotaResponse>('/api/v1/usage/quota');
-        setQuota(res.data);
+        if (!cancelled) setQuota(res.data);
       } catch {
-        setQuota(null);
+        if (!cancelled) setQuota(null);
       }
     };
 
-    if (noteId) {
-      fetchNote();
-      fetchQuota();
-      fetchTags();
-    }
-  }, [noteId, router, fetchTags, applyNoteFromApi]);
+    void fetchNote();
+    void fetchQuota();
+    void fetchTags();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [noteId, retryNonce, fetchTags, applyNoteFromApi]);
 
   useEffect(() => {
     let cancelled = false;
@@ -286,7 +415,22 @@ export default function NoteEditorPage() {
   const onSubmit = async (data: NoteFormValues) => {
     setIsSaving(true);
     try {
-      await api.put(`/api/v1/notes/${noteId}`, data);
+      if (noteType === 'checklist') {
+        const items = checklistItems
+          .filter((i) => i.text.trim())
+          .map((i, order) => ({
+            text: i.text.trim(),
+            checked: i.checked,
+            order,
+          }));
+        await api.put(`/api/v1/notes/${noteId}`, {
+          title: data.title,
+          content: '',
+          checklist_items: items,
+        });
+      } else {
+        await api.put(`/api/v1/notes/${noteId}`, data);
+      }
       reset(data);
       window.dispatchEvent(new Event('dashboard:refresh-notes'));
       toast.success('Saved');
@@ -577,6 +721,25 @@ export default function NoteEditorPage() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="flex min-h-[16rem] flex-col items-center justify-center gap-4 p-6 text-center">
+        <AlertCircle className="h-10 w-10 text-destructive" aria-hidden />
+        <p className="max-w-md text-sm text-muted-foreground">{loadError}</p>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button type="button" onClick={() => setRetryNonce((n) => n + 1)}>
+            <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
+            Retry
+          </Button>
+          <Button type="button" variant="outline" onClick={() => router.push('/dashboard')}>
+            <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+            Back to notes
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full overflow-y-auto w-full p-6 sm:p-8">
       <div className="max-w-5xl mx-auto space-y-5">
@@ -706,6 +869,65 @@ export default function NoteEditorPage() {
           </div>
         </div>
 
+        {/* Color, reminder, images (Keep-style) */}
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/50 bg-muted/15 p-3">
+          <span className="text-xs font-medium text-muted-foreground shrink-0">Color</span>
+          <div className="flex flex-wrap gap-1">
+            {NOTE_COLOR_OPTIONS.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                title={c.label}
+                onClick={() => setKeepColor(c.id)}
+                className={`h-6 w-6 rounded-full shrink-0 ${noteColorSwatchTw(c.id)} ${
+                  resolveNoteColorKey(noteColor) === c.id ? 'ring-2 ring-offset-2 ring-offset-background ring-primary' : ''
+                }`}
+              />
+            ))}
+          </div>
+          <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Bell className="h-3.5 w-3.5 shrink-0" />
+            <span className="sr-only">Reminder</span>
+            <input
+              type="datetime-local"
+              value={reminderInput}
+              onChange={(e) => onReminderInputChange(e.target.value)}
+              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
+            />
+          </label>
+          <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+            <ImagePlus className="h-3.5 w-3.5" />
+            Add image
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void uploadDetailImage(f);
+                e.target.value = '';
+              }}
+            />
+          </label>
+        </div>
+        {noteImages.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {noteImages.map((im) => (
+              <div
+                key={im.id}
+                className="h-24 w-24 overflow-hidden rounded-lg border border-border/60"
+              >
+                <AuthenticatedNoteImage
+                  noteId={noteId}
+                  imageId={im.id}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 flex flex-col gap-5">
             {voiceLayout && (
@@ -768,17 +990,21 @@ export default function NoteEditorPage() {
               ) : (
                 <div className="h-px w-full bg-gradient-to-r from-transparent via-border to-transparent" aria-hidden />
               )}
-              <KeywordRichEditor
-                value={watch('content') ?? ''}
-                onChangeText={(text) => setValue('content', text, { shouldDirty: true })}
-                onKeywordClick={handleKeywordClick}
-                placeholder={
-                  voiceLayout
-                    ? 'Transcript appears here — edit like any note…'
-                    : 'Start typing your thoughts...'
-                }
-                className="w-full flex-1 min-h-[60vh] p-0 border-none bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none text-lg leading-relaxed keyword-editor"
-              />
+              {noteType === 'checklist' && !voiceLayout ? (
+                <ChecklistEditor items={checklistItems} onChange={setChecklistItems} />
+              ) : (
+                <KeywordRichEditor
+                  value={watch('content') ?? ''}
+                  onChangeText={(text) => setValue('content', text, { shouldDirty: true })}
+                  onKeywordClick={handleKeywordClick}
+                  placeholder={
+                    voiceLayout
+                      ? 'Transcript appears here — edit like any note…'
+                      : 'Start typing your thoughts...'
+                  }
+                  className="w-full flex-1 min-h-[60vh] p-0 border-none bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-0 resize-none text-lg leading-relaxed keyword-editor"
+                />
+              )}
             </div>
           </div>
 
