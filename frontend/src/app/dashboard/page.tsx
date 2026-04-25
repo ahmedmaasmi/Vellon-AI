@@ -284,32 +284,42 @@ export default function DashboardPage() {
       .catch(() => {});
   }, []);
 
-  const fetchNotes = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setFetchError(null);
-      const params: Record<string, string> = {};
-      if (filter === 'favorites') params.favorite = 'true';
-      if (filter === 'archived') params.archived = 'true';
-      if (filter === 'deleted') params.deleted = 'true';
-      if (tagId) params.tag_id = tagId;
-      if (searchForApi) params.q = searchForApi;
-      const response = await api.get<Note[]>('/api/v1/notes', { params });
-      setNotes(response.data);
-    } catch (error: unknown) {
-      console.error('Failed to fetch notes:', error);
-      const isNetworkError =
-        (error as { code?: string; message?: string }).code === 'ERR_NETWORK' ||
-        (error as { message?: string }).message === 'Network Error';
-      setFetchError(
-        isNetworkError
-          ? "Couldn't connect to the server. Make sure the backend is running, then try again."
-          : 'Something went wrong loading your notes. Try again.'
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filter, tagId, searchForApi]);
+  const fetchNotes = useCallback(
+    async (options?: { showLoading?: boolean }) => {
+      const showLoading = options?.showLoading !== false;
+      try {
+        if (showLoading) {
+          setIsLoading(true);
+        }
+        setFetchError(null);
+        const params: Record<string, string> = {};
+        if (filter === 'favorites') params.favorite = 'true';
+        if (filter === 'archived') params.archived = 'true';
+        if (filter === 'deleted') params.deleted = 'true';
+        if (tagId) params.tag_id = tagId;
+        if (searchForApi) params.q = searchForApi;
+        const response = await api.get<Note[]>('/api/v1/notes', { params });
+        setNotes(response.data);
+      } catch (error: unknown) {
+        console.error('Failed to fetch notes:', error);
+        if (showLoading) {
+          const isNetworkError =
+            (error as { code?: string; message?: string }).code === 'ERR_NETWORK' ||
+            (error as { message?: string }).message === 'Network Error';
+          setFetchError(
+            isNetworkError
+              ? "Couldn't connect to the server. Make sure the backend is running, then try again."
+              : 'Something went wrong loading your notes. Try again.'
+          );
+        }
+      } finally {
+        if (showLoading) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [filter, tagId, searchForApi]
+  );
 
   useEffect(() => {
     fetchNotes();
@@ -317,7 +327,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const onRefresh = () => {
-      fetchNotes();
+      void fetchNotes({ showLoading: false });
       api
         .get<NoteCounts>('/api/v1/notes/counts')
         .then((r) => setStats({ all: r.data.all, favorite: r.data.favorite }))
@@ -333,9 +343,9 @@ export default function DashboardPage() {
         title: 'Untitled Note',
         content: '',
       });
-      window.dispatchEvent(new Event('dashboard:refresh-notes'));
       setModalNote(response.data.id);
       toast.success('New note created');
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
     } catch (error) {
       console.error('Failed to create note:', error);
       toast.error('Could not create note');
@@ -347,7 +357,6 @@ export default function DashboardPage() {
     try {
       await api.post(`/api/v1/notes/${noteId}/restore`);
       window.dispatchEvent(new Event('dashboard:refresh-notes'));
-      fetchNotes();
       toast.success('Note restored');
     } catch {
       toast.error('Could not restore note');
@@ -360,7 +369,6 @@ export default function DashboardPage() {
     try {
       await api.delete(`/api/v1/notes/${noteId}/permanent`);
       window.dispatchEvent(new Event('dashboard:refresh-notes'));
-      fetchNotes();
       toast.success('Note permanently deleted');
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -410,7 +418,7 @@ export default function DashboardPage() {
       window.dispatchEvent(new Event('dashboard:refresh-notes'));
     } catch {
       toast.error('Could not save new order');
-      fetchNotes();
+      void fetchNotes({ showLoading: false });
     }
   };
 
@@ -610,7 +618,7 @@ export default function DashboardPage() {
                         draggedOutlineClass={draggedOutline?.outlineClass}
                         draggedOutlineStyle={draggedOutline?.outlineStyle}
                         onOpen={() => setModalNote(note.id)}
-                        onRefresh={fetchNotes}
+                        onRefresh={() => void fetchNotes({ showLoading: false })}
                         onRestore={filter === 'deleted' ? restoreNote : undefined}
                         onPermanentDelete={filter === 'deleted' ? permanentDeleteNote : undefined}
                         dragHandlers={{

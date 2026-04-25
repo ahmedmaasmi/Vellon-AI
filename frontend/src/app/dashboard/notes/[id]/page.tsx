@@ -137,6 +137,8 @@ export default function NoteEditorPage() {
   const [noteImages, setNoteImages] = useState<NoteImageMeta[]>([]);
   const [noteColor, setNoteColor] = useState<string | null>(null);
   const [reminderInput, setReminderInput] = useState('');
+  /** Stable copy of body from API/reset; avoids re-feeding the editor on every `watch('content')` during typing. */
+  const [contentSnapshot, setContentSnapshot] = useState('');
   const skipChecklistSaveRef = useRef(true);
 
   const { register, handleSubmit, reset, watch, setValue, getValues, formState } = useForm<NoteFormValues>();
@@ -264,6 +266,7 @@ export default function NoteEditorPage() {
       setNoteImages(note.images ?? []);
       setNoteColor(note.color ?? null);
       setReminderInput(note.reminder_at ? new Date(note.reminder_at).toISOString().slice(0, 16) : '');
+      setContentSnapshot(note.content ?? '');
       skipChecklistSaveRef.current = true;
     },
     [reset]
@@ -994,7 +997,7 @@ export default function NoteEditorPage() {
                 <ChecklistEditor items={checklistItems} onChange={setChecklistItems} />
               ) : (
                 <KeywordRichEditor
-                  value={watch('content') ?? ''}
+                  value={contentSnapshot}
                   onChangeText={(text) => setValue('content', text, { shouldDirty: true })}
                   onKeywordClick={handleKeywordClick}
                   placeholder={

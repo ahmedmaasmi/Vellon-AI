@@ -44,6 +44,27 @@ interface FullNote {
   images: NoteImageMeta[] | null;
 }
 
+/** Stable JSON for autosave: only run PUT when the draft differs from the last load/save. */
+function buildAutosaveSnapshot(
+  n: FullNote,
+  title: string,
+  content: string,
+  items: ChecklistItemState[]
+): string {
+  const t = title.trim() || null;
+  if (n.note_type === 'checklist') {
+    const checklist_items = items
+      .filter((i) => i.text.trim())
+      .map((i, order) => ({
+        text: i.text.trim(),
+        checked: i.checked,
+        order,
+      }));
+    return JSON.stringify({ t, k: 'checklist' as const, checklist_items });
+  }
+  return JSON.stringify({ t, k: 'text' as const, c: content });
+}
+
 export default function NoteEditModal({
   noteId,
   onClose,
@@ -56,6 +77,8 @@ export default function NoteEditModal({
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  /** Editor seed only; do not pass live `content` or every debounced form update re-signals as external. */
+  const [contentSnapshot, setContentSnapshot] = useState('');
   const [checklistItems, setChecklistItems] = useState<ChecklistItemState[]>([
     { text: '', checked: false, order: 0 },
   ]);
@@ -64,6 +87,7 @@ export default function NoteEditModal({
   const [lightbox, setLightbox] = useState<string | null>(null);
   const noteRef = useRef<FullNote | null>(null);
   noteRef.current = note;
+  const lastSavedSnapshotRef = useRef('');
 
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -73,18 +97,19 @@ export default function NoteEditModal({
     try {
       const r = await api.get<FullNote>(`/api/v1/notes/${noteId}`);
       const n = r.data;
+      const listItems: ChecklistItemState[] = n.checklist_items?.length
+        ? n.checklist_items.map((it, i) => ({
+            text: it.text,
+            checked: it.checked,
+            order: it.order ?? i,
+          }))
+        : [{ text: '', checked: false, order: 0 }];
       setNote(n);
       setTitle(n.title ?? '');
       setContent(n.content ?? '');
-      setChecklistItems(
-        n.checklist_items?.length
-          ? n.checklist_items.map((it, i) => ({
-              text: it.text,
-              checked: it.checked,
-              order: it.order ?? i,
-            }))
-          : [{ text: '', checked: false, order: 0 }]
-      );
+      setContentSnapshot(n.content ?? '');
+      setChecklistItems(listItems);
+      lastSavedSnapshotRef.current = buildAutosaveSnapshot(n, n.title ?? '', n.content ?? '', listItems);
     } catch {
       toast.error('Could not load note');
       onCloseRef.current();
@@ -102,6 +127,10 @@ export default function NoteEditModal({
     const t = window.setTimeout(async () => {
       const n = noteRef.current;
       if (!n) return;
+      const current = buildAutosaveSnapshot(n, title, content, checklistItems);
+      if (current === lastSavedSnapshotRef.current) {
+        return;
+      }
       setSaveState('saving');
       try {
         const payload: Record<string, unknown> = {
@@ -118,6 +147,7 @@ export default function NoteEditModal({
             }));
         }
         await api.put(`/api/v1/notes/${noteId}`, payload);
+        lastSavedSnapshotRef.current = current;
         setSaveState('saved');
         window.dispatchEvent(new Event('dashboard:refresh-notes'));
       } catch {
@@ -260,7 +290,7 @@ export default function NoteEditModal({
               <ChecklistEditor items={checklistItems} onChange={setChecklistItems} />
             ) : (
               <KeywordRichEditor
-                value={content}
+                value={contentSnapshot}
                 onChangeText={setContent}
                 placeholder="Take a note…"
                 className="min-h-[140px] rounded-lg border border-transparent px-2 py-2 text-sm focus-visible:outline-none"

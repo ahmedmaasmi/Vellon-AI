@@ -62,27 +62,27 @@ export default function ChecklistEditor({
     <div className="space-y-2">
       {sorted.map((it, index) => (
         <div key={`${it.order}-${index}`} className="flex items-start gap-2 group/row">
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => toggle(index)}
-            className="mt-1.5 h-4 w-4 shrink-0 rounded border border-foreground/30 bg-background/80 disabled:opacity-50"
-            aria-checked={it.checked}
-            role="checkbox"
-          >
-            {it.checked ? (
-              <span className="flex h-full w-full items-center justify-center text-[10px] text-primary">
-                ✓
+          <span className="flex h-6 w-4 shrink-0 items-center self-start">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => toggle(index)}
+              className="inline-flex h-4 w-4 items-center justify-center rounded border border-foreground/30 bg-background/80 text-primary outline-none ring-offset-2 ring-offset-background focus-visible:ring-2 focus-visible:ring-ring/60 disabled:opacity-50"
+              aria-checked={it.checked}
+              role="checkbox"
+            >
+              <span className="grid h-full w-full place-items-center text-[10px] leading-none">
+                {it.checked ? '✓' : '\u00a0'}
               </span>
-            ) : null}
-          </button>
+            </button>
+          </span>
           <input
             type="text"
             disabled={disabled}
             placeholder={placeholder}
             value={it.text}
             onChange={(e) => updateAt(index, { text: e.target.value })}
-            className={`flex-1 min-w-0 border-0 bg-transparent px-1 py-0.5 text-sm outline-none ring-0 focus:ring-0 ${
+            className={`flex-1 min-w-0 border-0 bg-transparent px-1 py-0.5 text-sm leading-6 outline-none ring-0 focus:ring-0 decoration-from-font ${
               it.checked ? 'line-through text-muted-foreground' : ''
             }`}
           />

@@ -274,7 +274,7 @@ body {
   width: 1.05rem;
   height: 1.05rem;
   margin-right: 0.4rem;
-  margin-top: -0.12rem;
+  margin-top: 0;
   border-radius: 0.25rem;
   border: 2px solid rgb(var(--border));
   background: rgb(var(--card));
@@ -284,6 +284,15 @@ body {
   appearance: none;
   -webkit-appearance: none;
   position: relative;
+}
+
+.keyword-editor .md-task-cb:focus {
+  outline: none;
+}
+
+.keyword-editor .md-task-cb:focus-visible {
+  outline: 2px solid rgb(var(--ring));
+  outline-offset: 2px;
 }
 
 .keyword-editor .md-task-cb:hover {
@@ -367,11 +376,162 @@ body {
   }
 }
 
-/* Contenteditable placeholder */
+/* Contenteditable placeholder (custom div without TipTap) */
 .keyword-editor:empty::before,
 .keyword-editor[data-placeholder]:empty::before {
   content: attr(data-placeholder);
   color: rgb(var(--muted-foreground) / 0.4);
+}
+
+/* TipTap / ProseMirror note surface */
+.keyword-editor .tiptap-note .ProseMirror {
+  min-height: inherit;
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* Placeholder (TipTap @tiptap/extension-placeholder) */
+.keyword-editor .tiptap-note .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: rgb(var(--muted-foreground) / 0.4);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.keyword-editor .tiptap-note .ProseMirror p {
+  margin: 0.2rem 0;
+}
+
+.keyword-editor .tiptap-note .ProseMirror h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  margin: 0.4rem 0 0.2rem;
+}
+.keyword-editor .tiptap-note .ProseMirror h2 {
+  font-size: 1.35rem;
+  font-weight: 650;
+  line-height: 1.3;
+  margin: 0.35rem 0 0.2rem;
+}
+.keyword-editor .tiptap-note .ProseMirror h3 {
+  font-size: 1.12rem;
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 0.3rem 0 0.15rem;
+}
+
+.keyword-editor .tiptap-note .ProseMirror pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.875em;
+  line-height: 1.45;
+  background: rgb(var(--muted) / 0.45);
+  border: 1px solid rgb(var(--border));
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin: 0.4rem 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+.keyword-editor .tiptap-note .ProseMirror blockquote {
+  border-left: 3px solid rgb(var(--primary) / 0.35);
+  padding-left: 0.75rem;
+  margin: 0.2rem 0;
+  color: rgb(var(--muted-foreground));
+}
+
+/* Callout: blockquote with leading strong “Note:” in markdown — extra emphasis */
+.keyword-editor .tiptap-note .ProseMirror blockquote:has(> p strong) {
+  border-left: 4px solid rgb(var(--primary) / 0.45);
+  padding: 0.4rem 0.85rem;
+  border-radius: 0.5rem;
+  background: rgb(var(--primary) / 0.06);
+}
+
+.keyword-editor .tiptap-note .ProseMirror hr {
+  border: none;
+  height: 1px;
+  background: rgb(var(--border));
+  margin: 0.65rem 0;
+  border-radius: 1px;
+}
+
+.keyword-editor .tiptap-note .ProseMirror ul,
+.keyword-editor .tiptap-note .ProseMirror ol {
+  margin: 0.2rem 0;
+  padding-left: 1.35rem;
+}
+
+.keyword-editor .tiptap-note .ProseMirror li::marker {
+  color: rgb(var(--primary));
+  font-weight: 600;
+}
+
+/* Task list (TipTap) — grid keeps checkbox + body on one row (reliable with nodeView DOM) */
+.keyword-editor .tiptap-note .ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.15rem;
+  margin: 0.2rem 0;
+}
+.keyword-editor .tiptap-note .ProseMirror li[data-type="taskItem"] {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
+  column-gap: 0.4rem;
+  align-items: start;
+  list-style: none;
+  margin: 0.12rem 0;
+}
+.keyword-editor .tiptap-note .ProseMirror li[data-type="taskItem"] > label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 1.5rem;
+  margin: 0;
+  margin-top: 0.1rem;
+  padding: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  line-height: 0;
+  position: relative;
+  align-self: start;
+}
+/* Empty styler node from TipTap — keep it from affecting inline layout */
+.keyword-editor .tiptap-note .ProseMirror li[data-type="taskItem"] > label > span {
+  display: none;
+}
+.keyword-editor .tiptap-note .ProseMirror li[data-type="taskItem"] > label > input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  flex: 0 0 auto;
+  cursor: pointer;
+  accent-color: rgb(var(--primary));
+  box-sizing: border-box;
+}
+.keyword-editor .tiptap-note .ProseMirror li[data-type="taskItem"] > label > input[type="checkbox"]:focus {
+  outline: none;
+}
+.keyword-editor .tiptap-note .ProseMirror li[data-type="taskItem"] > label > input[type="checkbox"]:focus-visible {
+  outline: 2px solid rgb(var(--ring));
+  outline-offset: 2px;
+}
+.keyword-editor .tiptap-note .ProseMirror li[data-type="taskItem"] > div {
+  min-width: 0;
+  width: 100%;
+}
+/* Override global ProseMirror paragraph spacing inside task items so text sits beside the checkbox */
+.keyword-editor .tiptap-note .ProseMirror li[data-type="taskItem"] p {
+  margin: 0;
+}
+.keyword-editor .tiptap-note .ProseMirror li[data-type="taskItem"] p + p {
+  margin-top: 0.2rem;
 }
 
 /* Note editor: AI result reveal */

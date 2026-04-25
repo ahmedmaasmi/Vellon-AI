@@ -69,10 +69,10 @@ export default function QuickAddBar({
           headers: { 'Content-Type': 'multipart/form-data' },
         });
       }
-      window.dispatchEvent(new Event('dashboard:refresh-notes'));
-      toast.success('Note created');
       onCreated(noteId);
       reset();
+      toast.success('Note created');
+      window.dispatchEvent(new Event('dashboard:refresh-notes'));
     } catch {
       toast.error('Could not create note');
     } finally {
